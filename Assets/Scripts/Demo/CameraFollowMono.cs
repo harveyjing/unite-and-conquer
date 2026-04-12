@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.Transforms;
 using UnityEngine;
 
 public class CameraFollowMono : MonoBehaviour
@@ -9,22 +10,35 @@ public class CameraFollowMono : MonoBehaviour
     EntityQuery _query;
     bool _queryCreated;
 
-    void Start()
-    {
-        var world = World.DefaultGameObjectInjectionWorld;
-        if (world == null) return;
-        _query = world.EntityManager.CreateEntityQuery(typeof(CameraTargetData));
-        _queryCreated = true;
-    }
-
     void LateUpdate()
     {
-        if (!_queryCreated || _query.IsEmpty) return;
-        var target = _query.GetSingleton<CameraTargetData>();
+        // Lazy-init: search all worlds for one that has the player entity.
+        // Needed because NetCode creates multiple worlds (Client, Server) and
+        // the subscene may not be loaded on the first frame.
+        if (!_queryCreated)
+        {
+            foreach (var world in World.All)
+            {
+                var q = world.EntityManager.CreateEntityQuery(
+                    ComponentType.ReadOnly<PlayerTag>(),
+                    ComponentType.ReadOnly<LocalTransform>());
+                if (!q.IsEmpty)
+                {
+                    _query = q;
+                    _queryCreated = true;
+                    break;
+                }
+                q.Dispose();
+            }
+            if (!_queryCreated) return;
+        }
+
+        if (_query.IsEmpty) return;
+        var playerTransform = _query.GetSingleton<LocalTransform>();
         transform.position = new Vector3(
-            target.Position.x + offset.x,
-            target.Position.y + offset.y,
-            target.Position.z + offset.z
+            playerTransform.Position.x + offset.x,
+            playerTransform.Position.y + offset.y,
+            playerTransform.Position.z + offset.z
         );
     }
 
