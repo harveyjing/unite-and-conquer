@@ -12,6 +12,7 @@ public partial class PlayerInputSystem : SystemBase
     {
         // Create the singleton so other systems can always find it
         EntityManager.CreateSingleton<PlayerInputData>();
+        RequireForUpdate<PlayerInputData>();
     }
 
     protected override void OnUpdate()
