@@ -9,6 +9,13 @@ using Unity.Transforms;
 public partial struct PlayerMovementSystem : ISystem
 {
     [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        state.RequireForUpdate<PlayerInputData>();
+        state.RequireForUpdate<PlayerTag>();
+    }
+
+    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         float dt = SystemAPI.Time.DeltaTime;
@@ -19,12 +26,13 @@ public partial struct PlayerMovementSystem : ISystem
                           .WithAll<PlayerTag>())
         {
             float2 targetVelocity = moveAxis * movement.ValueRO.MoveSpeed;
-            float t = math.saturate(movement.ValueRO.Acceleration * dt);
-            movement.ValueRW.Velocity = math.lerp(movement.ValueRO.Velocity, targetVelocity, t);
+            float t = 1f - math.exp(-movement.ValueRO.Acceleration * dt);
+            float2 smoothedVelocity = math.lerp(movement.ValueRO.Velocity, targetVelocity, t);
+            movement.ValueRW.Velocity = smoothedVelocity;
 
             float3 pos = transform.ValueRO.Position;
-            pos.x += movement.ValueRO.Velocity.x * dt;
-            pos.z += movement.ValueRO.Velocity.y * dt;
+            pos.x += smoothedVelocity.x * dt;
+            pos.z += smoothedVelocity.y * dt;
 
             transform.ValueRW = LocalTransform.FromPositionRotationScale(
                 pos,
