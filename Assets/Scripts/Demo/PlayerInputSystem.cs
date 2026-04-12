@@ -17,6 +17,7 @@ public partial class PlayerInputSystem : SystemBase
 
     protected override void OnUpdate()
     {
+        SystemAPI.GetSingletonRW<PlayerInputData>().ValueRW.MoveAxis = float2.zero;
         var keyboard = Keyboard.current;
         if (keyboard == null) return;
 
