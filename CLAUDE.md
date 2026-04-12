@@ -4,14 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**Scaffolded — no DOTS packages yet.** Unity 6000.4.1f1 project exists with the default URP template. The DOTS stack (Entities, Burst, Collections, NetCode for Entities) is **not yet installed** — the `Packages/manifest.json` still contains only the default template packages. No simulation code exists; `Assets/` contains only the default SampleScene and TutorialInfo tutorial scripts. Re-run `/init` once DOTS packages are added and source code begins landing.
-
-Next step before writing any ECS code: add the required packages to `Packages/manifest.json`:
-- `com.unity.entities` (and `com.unity.entities.graphics`)
-- `com.unity.burst`
-- `com.unity.collections`
-- `com.unity.netcode` (Netcode for Entities 1.x)
-- `com.unity.transport`
+**DOTS stack installed; minimal demo working.** Unity 6000.4.1f1 project with URP. The DOTS packages are installed and a capsule-rotation subscene demo (`Assets/Scenes/SampleScene/EcsDemoSub.unity`) confirms the baking pipeline is functional. No game systems exist yet — the three files under `Assets/Scripts/Demo/` are the only ECS code. Re-run `/init` once real game systems begin landing.
 
 ## Unity project
 
@@ -20,10 +13,11 @@ Next step before writing any ECS code: add the required packages to `Packages/ma
 - **Scripting backend:** not yet set (will need IL2CPP for mobile builds)
 - **API compatibility:** .NET Standard 2.1 (`apiCompatibilityLevel: 6`)
 - **Input System:** 1.19.0 (new Input System package)
+- **Pinned DOTS packages:** `com.unity.entities.graphics` 6.4.0 · `com.unity.netcode` 1.11.0
 
 Opening the project: open Unity Hub → Add → select this repo root. Do not open via `unity-editor` CLI until a `-projectPath` wrapper script exists.
 
-Running tests: Unity Test Runner (Window → General → Test Runner). Once DOTS packages land, ECS unit tests use `Unity.Entities.Tests` base classes inside an `EditMode` test assembly. There is no standalone test CLI yet.
+Running tests: Unity Test Runner (Window → General → Test Runner). ECS unit tests use `Unity.Entities.Tests` base classes inside an `EditMode` test assembly. No `.asmdef` files exist yet — all code compiles into the default `Assembly-CSharp` assembly.
 
 ## Design vision
 
@@ -53,7 +47,7 @@ Reject any pattern that breaks the entity-scaling goal: MonoBehaviour-per-soldie
 - **Unity Entities (ECS)** — simulation backbone.
 - **Burst + Jobs** — hot-path code.
 - **Subscenes + Baking** — authoring → runtime entity conversion.
-- **Netcode for Entities 1.x** — replication. Pin a specific version when adding to manifest.
+- **Netcode for Entities 1.11.0** — replication (pinned).
 - **Server-authoritative model.** Lockstep is rejected: Burst/SIMD floating-point is *not* bit-deterministic across ARM (mobile) vs x86 (server).
 - **Anticipated server orchestration:** containerized dedicated servers on Kubernetes via **Agones**. Planning assumption — confirm once networking layer lands.
 
@@ -75,6 +69,18 @@ Guiding patterns for when code starts landing — not yet implemented:
 - Use `InternalBufferCapacity(0)` on dynamic buffers when payloads are usually empty.
 - Watch draw calls and batching aggressively; prefer Vulkan on Android where available.
 - Plan a **Burst feature-flag fallback** for problematic iOS devices (historical Burst-related crashes have been reported).
+
+## Current code structure
+
+The only ECS code is a minimal rotation demo in `Assets/Scripts/Demo/`:
+
+- `RotateTag.cs` — tag `IComponentData` (empty struct, marks entities to rotate)
+- `CapsuleDemoAuthoring.cs` — `MonoBehaviour` + nested `Baker<T>` that adds `RotateTag` at bake time
+- `CapsuleRotateSystem.cs` — `[BurstCompile] partial struct … : ISystem` that queries `LocalTransform` + `RotateTag` and rotates around X each frame
+
+This trio is the established pattern: tag → authoring/baker → Burst `ISystem`. **All new code should follow this pattern and extend these files or sit alongside them** rather than introducing parallel conventions.
+
+NetCode project settings landed automatically: `EntitiesClientSettings.asset`, `NetCodeClientAndServerSettings.asset`, and `NetCodeServerSettings.asset` live in `ProjectSettings/`.
 
 ## DOTS conventions to follow when code is added
 
