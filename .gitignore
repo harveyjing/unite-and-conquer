@@ -113,3 +113,6 @@ InitTestScene*.unity*
 # OS shell noise
 .DS_Store
 Thumbs.db
+
+# claude
+.claude
