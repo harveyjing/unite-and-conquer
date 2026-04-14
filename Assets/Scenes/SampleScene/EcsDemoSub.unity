@@ -187,7 +187,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 2100000, guid: c2e40fa84d53ccd428f640eac126b1fb, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -246,6 +246,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ebbbaa394762447a796dff78aa2528e7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CapsuleDemoAuthoring
+  moveSpeed: 5
+  acceleration: 10
 --- !u!1 &789168410
 GameObject:
   m_ObjectHideFlags: 0

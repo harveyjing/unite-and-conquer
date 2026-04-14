@@ -1,5 +1,4 @@
 using Unity.Entities;
-using Unity.Transforms;
 using UnityEngine;
 
 public class CameraFollowMono : MonoBehaviour
@@ -8,42 +7,44 @@ public class CameraFollowMono : MonoBehaviour
     public Vector3 offset = new Vector3(-10f, 14f, -10f);
 
     EntityQuery _query;
-    bool _queryCreated;
+    World _world;
+
+    // Finds the first world whose name contains "client" (case-insensitive),
+    // falling back to DefaultGameObjectInjectionWorld when no client world
+    // exists (e.g. single-player / editor play-mode without NetCode).
+    static World FindClientWorld()
+    {
+        foreach (var w in World.All)
+            if (w.Name.IndexOf("client", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                return w;
+        return World.DefaultGameObjectInjectionWorld;
+    }
 
     void LateUpdate()
     {
-        // Lazy-init: search all worlds for one that has the player entity.
-        // Needed because NetCode creates multiple worlds (Client, Server) and
-        // the subscene may not be loaded on the first frame.
-        if (!_queryCreated)
+        // Lazy-init: locate the client world and cache a query for the
+        // CameraTargetData singleton written by CameraFollowSystem.
+        if (_world == null || !_world.IsCreated)
         {
-            foreach (var world in World.All)
-            {
-                var q = world.EntityManager.CreateEntityQuery(
-                    ComponentType.ReadOnly<PlayerTag>(),
-                    ComponentType.ReadOnly<LocalTransform>());
-                if (!q.IsEmpty)
-                {
-                    _query = q;
-                    _queryCreated = true;
-                    break;
-                }
-                q.Dispose();
-            }
-            if (!_queryCreated) return;
+            _world = FindClientWorld();
+            if (_world == null) return;
+
+            _query = _world.EntityManager.CreateEntityQuery(
+                ComponentType.ReadOnly<CameraTargetData>());
         }
 
         if (_query.IsEmpty) return;
-        var playerTransform = _query.GetSingleton<LocalTransform>();
+
+        var target = _query.GetSingleton<CameraTargetData>();
         transform.position = new Vector3(
-            playerTransform.Position.x + offset.x,
-            playerTransform.Position.y + offset.y,
-            playerTransform.Position.z + offset.z
+            target.Position.x + offset.x,
+            target.Position.y + offset.y,
+            target.Position.z + offset.z
         );
     }
 
     void OnDestroy()
     {
-        if (_queryCreated) _query.Dispose();
+        if (_query != default) _query.Dispose();
     }
 }
