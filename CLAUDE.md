@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**DOTS stack installed; minimal demo working.** Unity 6000.4.1f1 project with URP. The DOTS packages are installed and a capsule-rotation subscene demo (`Assets/Scenes/SampleScene/EcsDemoSub.unity`) confirms the baking pipeline is functional. No game systems exist yet — the three files under `Assets/Scripts/Demo/` are the only ECS code. Re-run `/init` once real game systems begin landing.
+**DOTS stack with player character control working.** Unity 6000.4.1f1 project with URP. The DOTS packages are installed, baking pipeline is functional, and a player-controlled capsule demo (`Assets/Scenes/SampleScene/EcsDemoSub.unity`) is running: WASD movement with isometric input projection, exponential-smoothed velocity, and a MonoBehaviour camera follower bridging ECS world data to the Unity Camera. Re-run `/init` once the first real game systems (combat, city, resources) begin landing.
 
 ## Unity project
 
