@@ -98,6 +98,31 @@ NetCode project settings landed automatically: `EntitiesClientSettings.asset`, `
 - **Burst on iOS** has historical crash reports on some devices — keep a feature-flag fallback path.
 - **No public benchmark** demonstrates Netcode for Entities serving 1k–10k actively updated entities per world to mobile cellular clients. Build incremental load tests early (synthetic clients, cellular emulation, AOI saturation).
 
+## Required environment
+
+The following tools must be available at the start of every Claude Code session for this project. If any are missing or failing, surface the issue before doing other work.
+
+| Tool | Purpose | How to verify |
+|------|---------|---------------|
+| **Unity MCP** (`mcp__unity-mcp__*`) | Read Unity console logs, run Editor commands, capture scene views, generate assets | Call `Unity_GetConsoleLogs` — expect `"success": true`. Installed by the **Unity AI Assistant** package (`com.unity.ai.assistant`); binary: `/Users/wjing/.unity/relay/relay_mac_arm64.app/Contents/MacOS/relay_mac_arm64 --mcp` |
+| **Context7** (`mcp__plugin_context7_context7__*`) | Fetch up-to-date Unity / Entities / Burst / Netcode API docs | Use pinned library IDs below — skip `resolve-library-id` unless querying a new package |
+| **Firecrawl / web search** (Firecrawl skills) | Broader web research — MMO architecture, community benchmarks, Three Kingdoms references | Invoke `firecrawl-search` skill and confirm results return |
+
+**Context7 pinned library IDs** (skip `resolve-library-id` for these):
+
+| Package | Library ID | Snippets |
+|---------|-----------|---------|
+| Unity Entities (DOTS/ECS) | `/needle-mirror/com.unity.entities` | 1187 |
+| Netcode for Entities | `/websites/unity3d_packages_com_unity_netcode_1_10_api` | 2512 |
+| Unity Burst | `/needle-mirror/com.unity.burst` | 112 |
+| Unity Collections | `/websites/unity3d_packages_com_unity_collections_2_6` | 647 |
+| Unity Mathematics | `/websites/unity3d_packages_com_unity_mathematics_1_3` | 306 |
+
+**Usage rules:**
+- Use **Context7** (`ctx7`) for any Unity, Entities, Burst, or Netcode for Entities API question before answering from memory.
+- Use **Firecrawl web search** for anything outside library API docs: MMO architecture patterns, mobile performance data, gameplay references, community benchmarks.
+- Use **Unity MCP** to inspect the live Editor state (console errors, scene view) rather than guessing what is happening in the project.
+
 ## Scope discipline
 
 - **Do not write ECS systems or invent file layout without explicit user request.** The user drives scaffolding decisions.
