@@ -19,8 +19,7 @@ namespace Demo
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
-            var builder = new EntityQueryBuilder(Allocator.Temp)
-                .WithAll<PlayerCapsule>();
+            var builder = new EntityQueryBuilder(Allocator.Temp).WithAll<PlayerCapsule>();
             state.RequireForUpdate(state.GetEntityQuery(builder));
             state.RequireForUpdate<NetworkId>();
         }
@@ -28,17 +27,25 @@ namespace Demo
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            var prefab = SystemAPI.GetSingleton<PlayerSpawner>().Prefab;
+            var playerPrefab = SystemAPI.GetSingleton<PrefabSpawner>().PlayerPrefab;
             var ecb = new EntityCommandBuffer(Allocator.Temp);
 
-            foreach (var (playerCapsule, entity) in
-                     SystemAPI.Query<RefRO<PlayerCapsule>>().WithEntityAccess())
+            foreach (
+                var (playerCapsule, entity) in SystemAPI
+                    .Query<RefRO<PlayerCapsule>>()
+                    .WithEntityAccess()
+            )
             {
-                var player = ecb.Instantiate(prefab);
-                ecb.SetComponent(player, new GhostOwner { NetworkId = playerCapsule.ValueRO.NetworkId });
+                var playerEntity = ecb.Instantiate(playerPrefab);
+                ecb.SetComponent(
+                    playerEntity,
+                    new GhostOwner { NetworkId = playerCapsule.ValueRO.NetworkId }
+                );
 
                 ecb.DestroyEntity(entity);
-                UnityEngine.Debug.Log($"Spawning player for connection '{playerCapsule.ValueRO.NetworkId}' at location {playerCapsule.ValueRO.Location}");
+                UnityEngine.Debug.Log(
+                    $"Spawning player for connection '{playerCapsule.ValueRO.NetworkId}' at location {playerCapsule.ValueRO.Location}"
+                );
             }
 
             ecb.Playback(state.EntityManager);
