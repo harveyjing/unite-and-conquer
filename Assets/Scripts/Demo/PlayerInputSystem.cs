@@ -1,6 +1,4 @@
-using UnityEngine;
 using Unity.Entities;
-using Unity.Mathematics;
 using Unity.NetCode;
 using UnityEngine.InputSystem;
 
@@ -20,13 +18,15 @@ public partial struct PlayerInputSystem : ISystem
         foreach(var playerInput in SystemAPI.Query<RefRW<PlayerInput>>().WithAll<GhostOwnerIsLocal>())
         {
             playerInput.ValueRW = default;
-            if (Input.GetKey("left"))
+            var kb = Keyboard.current;
+            if (kb == null) return;
+            if (kb.leftArrowKey.isPressed || kb.aKey.isPressed)
                 playerInput.ValueRW.Horizontal -= 1;
-            if (Input.GetKey("right"))
+            if (kb.rightArrowKey.isPressed || kb.dKey.isPressed)
                 playerInput.ValueRW.Horizontal += 1;
-            if (Input.GetKey("down"))
+            if (kb.downArrowKey.isPressed || kb.sKey.isPressed)
                 playerInput.ValueRW.Vertical -= 1;
-            if (Input.GetKey("up"))
+            if (kb.upArrowKey.isPressed || kb.wKey.isPressed)
                 playerInput.ValueRW.Vertical += 1;
             return;
         }
