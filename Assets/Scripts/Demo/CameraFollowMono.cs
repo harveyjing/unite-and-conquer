@@ -45,6 +45,7 @@ public class CameraFollowMono : MonoBehaviour
 
     void OnDestroy()
     {
-        if (_query != default) _query.Dispose();
+        if (_query != default && _world != null && _world.IsCreated)
+            _query.Dispose();
     }
 }

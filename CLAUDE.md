@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**DOTS stack with player character control working.** Unity 6000.4.1f1 project with URP. The DOTS packages are installed, baking pipeline is functional, and a player-controlled capsule demo (`Assets/Scenes/SampleScene/EcsDemoSub.unity`) is running: WASD movement with isometric input projection, exponential-smoothed velocity, and a MonoBehaviour camera follower bridging ECS world data to the Unity Camera. Re-run `/init` once the first real game systems (combat, city, resources) begin landing.
+**Netcode demo working end-to-end.** Unity 6000.4.1f1 project with URP. The full Netcode for Entities connection lifecycle is functional: `ClientServerBootstrap` spins up both worlds on Play, the `GoInGame` RPC handshake marks the stream in-game, the server spawns a predicted player ghost via `PlayerSpawnSystem`, and the client drives it with WASD input through `GhostInputSystemGroup` + `PredictedSimulationSystemGroup`. A MonoBehaviour camera bridges ECS world state to the Unity Camera. Re-run `/init` once the first real game systems (combat, city, resources) begin landing.
 
 ## Unity project
 
@@ -72,15 +72,27 @@ Guiding patterns for when code starts landing — not yet implemented:
 
 ## Current code structure
 
-The only ECS code is a minimal rotation demo in `Assets/Scripts/Demo/`:
+All ECS code lives under `Assets/Scripts/` in three directories. The pattern throughout is: **tag/component → authoring+baker → Burst `ISystem`**.
 
-- `RotateTag.cs` — tag `IComponentData` (empty struct, marks entities to rotate)
-- `CapsuleDemoAuthoring.cs` — `MonoBehaviour` + nested `Baker<T>` that adds `RotateTag` at bake time
-- `CapsuleRotateSystem.cs` — `[BurstCompile] partial struct … : ISystem` that queries `LocalTransform` + `RotateTag` and rotates around X each frame
+**`Bootstrap/`** — connection lifecycle (runs on both client and server):
+- `GameBootstrap.cs` — `ClientServerBootstrap` subclass; sets `AutoConnectPort = 7979`; honours the PlayMode Tools window (ClientAndServer / Server / Client)
+- `GoInGame.cs` — `GoInGameRequest` IRpcCommand; `GoInGameClientSystem` fires it once `NetworkId` is assigned (no `NetworkStreamInGame`); `GoInGameServerSystem` marks the stream in-game and creates a temporary `PlayerCapsule` marker entity with random tile coordinates
 
-This trio is the established pattern: tag → authoring/baker → Burst `ISystem`. **All new code should follow this pattern and extend these files or sit alongside them** rather than introducing parallel conventions.
+**`Net/`** — server-side spawn:
+- `PlayerSpawnerAuthoring.cs` — bakes `PlayerSpawner` singleton (holds the prefab `Entity` ref); place one in `EcsDemoSub` with the `PlayerCapsule` prefab dragged in
+- `PlayerSpawnSystem.cs` — `ServerSimulation` only; queries `PlayerCapsule` markers, instantiates `PlayerSpawner.Prefab`, sets `GhostOwner.NetworkId`, destroys the marker
 
-NetCode project settings landed automatically: `EntitiesClientSettings.asset`, `NetCodeClientAndServerSettings.asset`, and `NetCodeServerSettings.asset` live in `ProjectSettings/`.
+**`Demo/`** — input, movement, camera:
+- `PlayerInputAuthoring.cs` — bakes `PlayerTag` (tag) + `PlayerInput` (`IInputComponentData`) onto the capsule prefab
+- `PlayerInputSystem.cs` — `GhostInputSystemGroup`; reads `Keyboard.current` (WASD / arrows); no `[BurstCompile]` because of managed `Keyboard` access; only writes to `GhostOwnerIsLocal` entities
+- `PlayerMovementSystem.cs` — `[BurstCompile]`, `PredictedSimulationSystemGroup`; translates `PlayerInput` → `LocalTransform` delta; runs on both client (prediction) and server (authority)
+- `CameraTargetData.cs` — singleton `IComponentData` holding the player's world position this frame
+- `CameraFollowSystem.cs` — `[BurstCompile]`, `PresentationSystemGroup`, `ClientSimulation`; writes `CameraTargetData` from the local player's `LocalTransform`
+- `CameraFollowMono.cs` — `MonoBehaviour`; lazy-finds the client world in `LateUpdate`, reads the `CameraTargetData` singleton, offsets the Camera
+
+**Ghost prefab:** `Assets/Prefabs/PlayerCapsule.prefab` — has `GhostAuthoringComponent`, `PlayerInputAuthoring`, and a `MeshRenderer`/`Collider`; drag it into the `PlayerSpawnerAuthoring` field in the subscene.
+
+NetCode project settings: `EntitiesClientSettings.asset`, `NetCodeClientAndServerSettings.asset`, and `NetCodeServerSettings.asset` live in `ProjectSettings/`.
 
 ## DOTS conventions to follow when code is added
 
@@ -98,12 +110,37 @@ NetCode project settings landed automatically: `EntitiesClientSettings.asset`, `
 - **Burst on iOS** has historical crash reports on some devices — keep a feature-flag fallback path.
 - **No public benchmark** demonstrates Netcode for Entities serving 1k–10k actively updated entities per world to mobile cellular clients. Build incremental load tests early (synthetic clients, cellular emulation, AOI saturation).
 
+## Required environment
+
+The following tools must be available at the start of every Claude Code session for this project. If any are missing or failing, surface the issue before doing other work.
+
+| Tool | Purpose | How to verify |
+|------|---------|---------------|
+| **Unity MCP** (`mcp__unity-mcp__*`) | Read Unity console logs, run Editor commands, capture scene views, generate assets | Call `Unity_GetConsoleLogs` — expect `"success": true`. Installed by the **Unity AI Assistant** package (`com.unity.ai.assistant`); binary: `/Users/wjing/.unity/relay/relay_mac_arm64.app/Contents/MacOS/relay_mac_arm64 --mcp` |
+| **Context7** (`mcp__plugin_context7_context7__*`) | Fetch up-to-date Unity / Entities / Burst / Netcode API docs | Use pinned library IDs below — skip `resolve-library-id` unless querying a new package |
+| **Firecrawl / web search** (Firecrawl skills) | Broader web research — MMO architecture, community benchmarks, Three Kingdoms references | Invoke `firecrawl-search` skill and confirm results return |
+
+**Context7 pinned library IDs** (skip `resolve-library-id` for these):
+
+| Package | Library ID | Snippets |
+|---------|-----------|---------|
+| Unity Entities (DOTS/ECS) | `/needle-mirror/com.unity.entities` | 1187 |
+| Netcode for Entities | `/websites/unity3d_packages_com_unity_netcode_1_10_api` | 2512 |
+| Unity Burst | `/needle-mirror/com.unity.burst` | 112 |
+| Unity Collections | `/websites/unity3d_packages_com_unity_collections_2_6` | 647 |
+| Unity Mathematics | `/websites/unity3d_packages_com_unity_mathematics_1_3` | 306 |
+
+**Usage rules:**
+- Use **Context7** (`ctx7`) for any Unity, Entities, Burst, or Netcode for Entities API question before answering from memory.
+- Use **Firecrawl web search** for anything outside library API docs: MMO architecture patterns, mobile performance data, gameplay references, community benchmarks.
+- Use **Unity MCP** to inspect the live Editor state (console errors, scene view) rather than guessing what is happening in the project.
+
 ## Scope discipline
 
 - **Do not write ECS systems or invent file layout without explicit user request.** The user drives scaffolding decisions.
 - When asked to add code, *first* read whatever exists at that time and extend existing patterns rather than introducing parallel ones.
 - Use **`ctx7`** for Unity / Entities / Burst / Netcode for Entities API questions before answering.
-- **Whenever you need information from the internet, use Tavily** (`tvly` CLI / Tavily skills) for broader web research — MMO architecture patterns, mobile performance, Three Kingdoms gameplay references, community benchmarks, anything outside library API docs.
+- **Whenever you need information from the internet, use Firecrawl** (Firecrawl skills) for broader web research — MMO architecture patterns, mobile performance, Three Kingdoms gameplay references, community benchmarks, anything outside library API docs.
 
 ## References
 

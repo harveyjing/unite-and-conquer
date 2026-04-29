@@ -1,9 +1,11 @@
 using Unity.Burst;
 using Unity.Entities;
+using Unity.NetCode;
 using Unity.Transforms;
 
 [BurstCompile]
 [UpdateInGroup(typeof(PresentationSystemGroup))]
+[WorldSystemFilter(WorldSystemFilterFlags.ClientSimulation)]
 public partial struct CameraFollowSystem : ISystem
 {
     [BurstCompile]
@@ -18,13 +20,13 @@ public partial struct CameraFollowSystem : ISystem
     {
         foreach (var transform in
                  SystemAPI.Query<RefRO<LocalTransform>>()
-                          .WithAll<PlayerTag>())
+                          .WithAll<PlayerTag, GhostOwnerIsLocal>())
         {
             SystemAPI.SetSingleton(new CameraTargetData
             {
                 Position = transform.ValueRO.Position
             });
-            return; // single player — exit after first match
+            return;
         }
     }
 }

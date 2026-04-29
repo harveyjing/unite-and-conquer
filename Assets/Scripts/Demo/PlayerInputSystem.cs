@@ -1,45 +1,35 @@
 using Unity.Entities;
-using Unity.Mathematics;
+using Unity.NetCode;
 using UnityEngine.InputSystem;
 
-[UpdateInGroup(typeof(SimulationSystemGroup))]
-public partial class PlayerInputSystem : SystemBase
-{
-    // sqrt(2)/2 — the isometric projection constant
-    const float k = 0.70711f;
 
-    protected override void OnCreate()
+[UpdateInGroup(typeof(GhostInputSystemGroup))]
+public partial struct PlayerInputSystem : ISystem
+{
+
+    public void OnCreate(ref SystemState state)
     {
-        // Create the singleton so other systems can always find it
-        EntityManager.CreateSingleton<PlayerInputData>();
-        RequireForUpdate<PlayerInputData>();
+        state.RequireForUpdate<NetworkStreamInGame>();
     }
 
-    protected override void OnUpdate()
+    public void OnUpdate(ref SystemState state)
     {
-        SystemAPI.GetSingletonRW<PlayerInputData>().ValueRW.MoveAxis = float2.zero;
-        var keyboard = Keyboard.current;
-        if (keyboard == null) return;
 
-        float rawX = 0f, rawY = 0f;
-        if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) rawX += 1f;
-        if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed)  rawX -= 1f;
-        if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed)    rawY += 1f;
-        if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed)  rawY -= 1f;
-
-        float2 moveAxis = float2.zero;
-        if (rawX != 0f || rawY != 0f)
+        foreach(var playerInput in SystemAPI.Query<RefRW<PlayerInput>>().WithAll<GhostOwnerIsLocal>())
         {
-            float2 raw = math.normalize(new float2(rawX, rawY));
-            // Project onto isometric camera axes
-            // camRight = (k, 0, -k)  →  world X = raw.x * k + raw.y * k
-            // camForward = (k, 0, k) →  world Z = raw.x * -k + raw.y * k
-            moveAxis = new float2(
-                raw.x * k + raw.y * k,
-                raw.x * -k + raw.y * k
-            );
+            playerInput.ValueRW = default;
+            var kb = Keyboard.current;
+            if (kb == null) return;
+            if (kb.leftArrowKey.isPressed || kb.aKey.isPressed)
+                playerInput.ValueRW.Horizontal -= 1;
+            if (kb.rightArrowKey.isPressed || kb.dKey.isPressed)
+                playerInput.ValueRW.Horizontal += 1;
+            if (kb.downArrowKey.isPressed || kb.sKey.isPressed)
+                playerInput.ValueRW.Vertical -= 1;
+            if (kb.upArrowKey.isPressed || kb.wKey.isPressed)
+                playerInput.ValueRW.Vertical += 1;
+            return;
         }
 
-        SystemAPI.GetSingletonRW<PlayerInputData>().ValueRW.MoveAxis = moveAxis;
     }
 }
