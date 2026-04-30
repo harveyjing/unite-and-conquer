@@ -1,0 +1,34 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+  <Style src="DemoHud.uss" />
+  <ui:VisualElement name="root" picking-mode="Ignore" style="flex-grow: 1;">
+
+    <ui:VisualElement name="status-panel" class="panel status">
+      <ui:Label name="connection-label" text="Disconnected">
+        <Bindings>
+          <ui:DataBinding property="text" data-source-path="ConnectionText" binding-mode="ToTarget" />
+        </Bindings>
+      </ui:Label>
+      <ui:Label name="position-label" text="Pos: -">
+        <Bindings>
+          <ui:DataBinding property="text" data-source-path="PositionText" binding-mode="ToTarget" />
+        </Bindings>
+      </ui:Label>
+      <ui:Label name="ghost-count-label" text="Ghosts: 0">
+        <Bindings>
+          <ui:DataBinding property="text" data-source-path="GhostCountText" binding-mode="ToTarget" />
+        </Bindings>
+      </ui:Label>
+      <ui:Label name="tick-label" text="Tick: -">
+        <Bindings>
+          <ui:DataBinding property="text" data-source-path="TickText" binding-mode="ToTarget" />
+        </Bindings>
+      </ui:Label>
+    </ui:VisualElement>
+
+    <ui:VisualElement name="action-panel" class="panel actions">
+      <ui:Button name="respawn-btn"        text="Respawn" />
+      <ui:Button name="spawn-obstacle-btn" text="Spawn Obstacle" />
+    </ui:VisualElement>
+
+  </ui:VisualElement>
+</ui:UXML>

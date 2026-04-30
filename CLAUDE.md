@@ -4,148 +4,92 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**Netcode demo working end-to-end.** Unity 6000.4.1f1 project with URP. The full Netcode for Entities connection lifecycle is functional: `ClientServerBootstrap` spins up both worlds on Play, the `GoInGame` RPC handshake marks the stream in-game, the server spawns a predicted player ghost via `PlayerSpawnSystem`, and the client drives it with WASD input through `GhostInputSystemGroup` + `PredictedSimulationSystemGroup`. A MonoBehaviour camera bridges ECS world state to the Unity Camera. Re-run `/init` once the first real game systems (combat, city, resources) begin landing.
+**Netcode demo working end-to-end.** Unity 6000.4.1f1 / URP. The full Netcode for Entities connection lifecycle is functional: `ClientServerBootstrap` spins up both worlds on Play, `GoInGame` RPC marks the stream in-game, the server spawns a predicted player ghost, and the client drives it with WASD through predicted simulation. A MonoBehaviour camera bridges ECS world state to the Unity Camera. Re-run `/init` once the first real game systems (combat, city, resources) begin landing.
 
 ## Unity project
 
-- **Editor version:** 6000.4.1f1
-- **Render pipeline:** URP 17.4.0
-- **Scripting backend:** not yet set (will need IL2CPP for mobile builds)
-- **API compatibility:** .NET Standard 2.1 (`apiCompatibilityLevel: 6`)
-- **Input System:** 1.19.0 (new Input System package)
+- **Editor:** 6000.4.1f1 · **URP:** 17.4.0 · **Input System:** 1.19.0 · **API:** .NET Standard 2.1
 - **Pinned DOTS packages:** `com.unity.entities.graphics` 6.4.0 · `com.unity.netcode` 1.11.0
-
-Opening the project: open Unity Hub → Add → select this repo root. Do not open via `unity-editor` CLI until a `-projectPath` wrapper script exists.
-
-Running tests: Unity Test Runner (Window → General → Test Runner). ECS unit tests use `Unity.Entities.Tests` base classes inside an `EditMode` test assembly. No `.asmdef` files exist yet — all code compiles into the default `Assembly-CSharp` assembly.
+- **Open via** Unity Hub → Add → select repo root. Do not use `unity-editor` CLI.
+- **Tests:** Window → General → Test Runner. ECS unit tests use `Unity.Entities.Tests` in an `EditMode` assembly. No `.asmdef` files yet — all code compiles into `Assembly-CSharp`.
 
 ## Design vision
 
-The game is a **large-scale Three Kingdoms strategy MMO inspired by 热血三国 (Re Xue San Guo / "Passion Three Kingdoms")**: city building, generals/heroes, a four-resource economy, alliances, siege warfare, and a persistent grid world with tile-level territorial control. See [docs/basic-idea.md](docs/basic-idea.md) for the original brief.
+**Large-scale Three Kingdoms strategy MMO** inspired by 热血三国 (Re Xue San Guo). See [docs/basic-idea.md](docs/basic-idea.md) for the original brief.
 
-**Core differentiator (non-negotiable):** every soldier, mount, siege engine, and supply wagon is an individual simulated entity with position, state, and behavior — *not* an abstract stack count as in the reference game. This single design choice is the reason Unity DOTS is the chosen stack, and **every architectural decision must be measured against**: *does this still scale to tens of thousands of individually simulated entities per battle, replicated to mobile clients?*
+**Core differentiator (non-negotiable):** every soldier, mount, siege engine, and supply wagon is an individual simulated entity — *not* an abstract stack count. This is why DOTS is the stack. **Every architectural decision must answer**: *does this scale to tens of thousands of individually simulated entities per battle, replicated to mobile clients?*
 
-Mechanics inherited from the reference (anchor points, not a spec):
+Reject: MonoBehaviour-per-soldier, GameObject-heavy hierarchies, per-entity managed allocations, single-threaded per-entity update loops.
 
-- Four resources: wood, grain, stone, iron, plus gold from city tax; population/tax interactions.
-- ~12 unit classes (spear / shield / archer / light-heavy-archer cavalry / crossbow / battering ram / trebuchet / supply wagon / scouts) with rock-paper-scissors counter multipliers.
-- Formation cyclic-advantage chain layered on top of unit counters.
-- Multi-tier general (hero) gacha with ~16 equipment slots and set bonuses.
-- Persistent grid world (reference uses 500×500, 13 provinces) with terrain types, tile occupation, raiding, and named-city tiers.
-- Alliances with shared tech, resource transport, and coordinated siege warfare.
+**Target:** mobile-first MMO (iOS/Android primary). Server-authoritative; clients are thin renderers + input + prediction. Treat the client as untrusted. Design for cellular networks and 1–4 GB devices from day one.
 
-Reject any pattern that breaks the entity-scaling goal: MonoBehaviour-per-soldier, GameObject-heavy hierarchies, per-entity managed allocations, single-threaded per-entity update loops.
-
-## Platform & target
-
-- **Online MMO, mobile-first.** iOS and Android are the primary targets. Desktop and tablet are secondary at most.
-- **Persistent server-authoritative world.** Clients are thin renderers + input + prediction. Treat the client as untrusted.
-- Design for cellular networks, thermal throttling, and devices with **1–4 GB shared CPU/GPU memory** from day one — not as a late-stage optimization pass.
+Reference mechanics (anchor points, not a spec): four resources (wood/grain/stone/iron + gold), ~12 unit classes with rock-paper-scissors counters, formation cyclic-advantage chain, multi-tier general gacha (~16 equipment slots), persistent 500×500 grid world with terrain/tile occupation, alliances with shared tech and siege warfare.
 
 ## Tech stack
 
-- **Unity Entities (ECS)** — simulation backbone.
-- **Burst + Jobs** — hot-path code.
-- **Subscenes + Baking** — authoring → runtime entity conversion.
-- **Netcode for Entities 1.11.0** — replication (pinned).
-- **Server-authoritative model.** Lockstep is rejected: Burst/SIMD floating-point is *not* bit-deterministic across ARM (mobile) vs x86 (server).
-- **Anticipated server orchestration:** containerized dedicated servers on Kubernetes via **Agones**. Planning assumption — confirm once networking layer lands.
+- **Unity Entities (ECS)** — simulation backbone; **Burst + Jobs** — hot paths; **Subscenes + Baking** — authoring → runtime
+- **Netcode for Entities 1.11.0** (pinned) — server-authoritative replication. Lockstep rejected: Burst/SIMD floats are not bit-deterministic across ARM vs x86.
+- **Server orchestration intent:** containerized dedicated servers on Kubernetes via Agones. Zone-authoritative servers; AOI replication via `GhostDistanceImportance` + spatial hash jobs; per-client relevancy sets with capped snapshot history and `MaxSendEntities`.
 
-## Server / world architecture intent
+## Mobile constraints to honor
 
-Guiding patterns for when code starts landing — not yet implemented:
-
-- **Zone / region authoritative servers.** Each zone owns its entities; authority transfers to adjacent zones via compact handoff messages.
-- **Area-of-interest replication** via `GhostDistanceImportance` + `GhostDistancePartitioningSystem`, on a tile/chunk grid sized to gameplay (precise tile size TBD).
-- **Spatial partition** (spatial hash / voxel grid) implemented as Burst-compiled jobs for neighbor queries, culling, and AOI.
-- **Per-client relevancy sets**, snapshot history limited (target 6–16 entries vs defaults), `MaxSendEntities` capped, delta compression on, adaptive `MaxSendRate` per client class.
-- **Anti-cheat baseline:** server authority + selective replication / fog-of-war.
-
-## Mobile constraints to honor in design
-
-- **Tickrate slightly below render framerate** (e.g., 30 Hz tick at 30/60 fps render). Use wider interpolation windows on low-end devices.
-- **Schedule work across frames** — `frameCount % interval`, chunk-per-frame jobs, staggered spawns. Never pile all the work into a single frame.
-- **Coalesce frequently-updated fields** into compact ghost component structs; minimize the replicated component set per ghost.
-- Use `InternalBufferCapacity(0)` on dynamic buffers when payloads are usually empty.
-- Watch draw calls and batching aggressively; prefer Vulkan on Android where available.
-- Plan a **Burst feature-flag fallback** for problematic iOS devices (historical Burst-related crashes have been reported).
+- 30 Hz tick at 30/60 fps render; wider interpolation windows on low-end devices.
+- Schedule work across frames (`frameCount % interval`, chunk-per-frame jobs, staggered spawns).
+- Coalesce ghost component fields; use `InternalBufferCapacity(0)` on usually-empty dynamic buffers.
+- Prefer Vulkan on Android; keep a Burst feature-flag fallback for problematic iOS devices.
 
 ## Current code structure
 
-All ECS code lives under `Assets/Scripts/` in three directories. The pattern throughout is: **tag/component → authoring+baker → Burst `ISystem`**.
+All ECS code lives under `Assets/Scripts/Demo/` (`Demo` namespace):
 
-**`Bootstrap/`** — connection lifecycle (runs on both client and server):
-- `GameBootstrap.cs` — `ClientServerBootstrap` subclass; sets `AutoConnectPort = 7979`; honours the PlayMode Tools window (ClientAndServer / Server / Client)
-- `GoInGame.cs` — `GoInGameRequest` IRpcCommand; `GoInGameClientSystem` fires it once `NetworkId` is assigned (no `NetworkStreamInGame`); `GoInGameServerSystem` marks the stream in-game and creates a temporary `PlayerCapsule` marker entity with random tile coordinates
+- **`Bootstrap/`** — `ClientServerBootstrap` subclass, `GoInGame` RPC handshake
+- **`Authoring/`** — MonoBehaviour authoring components and their bakers
+- **`System/`** — Burst `ISystem` implementations
 
-**`Net/`** — server-side spawn:
-- `PlayerSpawnerAuthoring.cs` — bakes `PlayerSpawner` singleton (holds the prefab `Entity` ref); place one in `EcsDemoSub` with the `PlayerCapsule` prefab dragged in
-- `PlayerSpawnSystem.cs` — `ServerSimulation` only; queries `PlayerCapsule` markers, instantiates `PlayerSpawner.Prefab`, sets `GhostOwner.NetworkId`, destroys the marker
+Pattern: **tag/component → authoring+baker → Burst `ISystem`**. Ghost prefab in `Assets/Prefabs/`. NetCode settings in `ProjectSettings/`.
 
-**`Demo/`** — input, movement, camera:
-- `PlayerInputAuthoring.cs` — bakes `PlayerTag` (tag) + `PlayerInput` (`IInputComponentData`) onto the capsule prefab
-- `PlayerInputSystem.cs` — `GhostInputSystemGroup`; reads `Keyboard.current` (WASD / arrows); no `[BurstCompile]` because of managed `Keyboard` access; only writes to `GhostOwnerIsLocal` entities
-- `PlayerMovementSystem.cs` — `[BurstCompile]`, `PredictedSimulationSystemGroup`; translates `PlayerInput` → `LocalTransform` delta; runs on both client (prediction) and server (authority)
-- `CameraTargetData.cs` — singleton `IComponentData` holding the player's world position this frame
-- `CameraFollowSystem.cs` — `[BurstCompile]`, `PresentationSystemGroup`, `ClientSimulation`; writes `CameraTargetData` from the local player's `LocalTransform`
-- `CameraFollowMono.cs` — `MonoBehaviour`; lazy-finds the client world in `LateUpdate`, reads the `CameraTargetData` singleton, offsets the Camera
+## DOTS conventions
 
-**Ghost prefab:** `Assets/Prefabs/PlayerCapsule.prefab` — has `GhostAuthoringComponent`, `PlayerInputAuthoring`, and a `MeshRenderer`/`Collider`; drag it into the `PlayerSpawnerAuthoring` field in the subscene.
+- Authoring MonoBehaviours suffixed `Authoring`; `Baker<T>` lives alongside.
+- GameObject content in **Subscenes**, not legacy Scenes.
+- Prefer **`ISystem`** (Burst-compatible) over `SystemBase` unless managed data is required.
+- Explicit `SystemGroup` ordering — never rely on defaults for simulation-critical work.
+- **`IComponentData`** (unmanaged) by default; **`IBufferElementData`** for per-entity dynamic arrays; tag components for state flags.
+- Hot loops via **`IJobEntity` / `IJobChunk`** + Burst; no managed allocations in per-frame code.
 
-NetCode project settings: `EntitiesClientSettings.asset`, `NetCodeClientAndServerSettings.asset`, and `NetCodeServerSettings.asset` live in `ProjectSettings/`.
+## Known risks
 
-## DOTS conventions to follow when code is added
+- **Cross-arch nondeterminism** (ARM vs x86) → server-authoritative only, no lockstep.
+- **Netcode for Entities host-migration** limitations (prespawned ghost sync errors, ID reallocation) — design failover paths; don't assume seamless migration.
+- **Burst on iOS** has historical crash reports — keep a feature-flag fallback.
+- No public benchmark for Netcode for Entities serving 1k–10k entities to mobile cellular clients — build incremental load tests early.
 
-- Authoring MonoBehaviours suffixed `Authoring`; their `Baker<T>` lives alongside.
-- GameObject content lives in **Subscenes**, not legacy Scenes — ECS is incompatible with the legacy scene system for runtime data.
-- Prefer **`ISystem`** (Burst-compatible) over `SystemBase` unless managed data is genuinely required.
-- Group systems explicitly into `SystemGroup`s; do not rely on default ordering for simulation-critical work.
-- Components are **`IComponentData`** (unmanaged) by default; **`IBufferElementData`** for per-entity dynamic arrays (e.g., a unit's order queue); tag components for state flags.
-- Hot loops go through **`IJobEntity` / `IJobChunk`** with Burst; avoid managed allocations in per-frame system code.
+## Required tools
 
-## Known risks not to forget
+Verify these at session start; surface failures before other work.
 
-- **Cross-architecture nondeterminism** (ARM vs x86 with Burst/SIMD) → rules out lockstep; server-authoritative only.
-- **Netcode for Entities host-migration limitations** (prespawned ghost sync errors, ID reallocation) — design failover paths around these, do not assume seamless host migration.
-- **Burst on iOS** has historical crash reports on some devices — keep a feature-flag fallback path.
-- **No public benchmark** demonstrates Netcode for Entities serving 1k–10k actively updated entities per world to mobile cellular clients. Build incremental load tests early (synthetic clients, cellular emulation, AOI saturation).
+| Tool | Purpose |
+|------|---------|
+| **Unity MCP** (`mcp__unity-mcp__*`) | Console logs, Editor commands, scene capture. Call `Unity_GetConsoleLogs` — expect `"success": true` |
+| **Context7** (`mcp__plugin_context7_context7__*`) | Up-to-date Unity / Entities / Burst / Netcode API docs — use before answering from memory |
+| **Firecrawl** (Firecrawl skills) | Web research: MMO architecture, benchmarks, Three Kingdoms references |
 
-## Required environment
+**Context7 pinned library IDs:**
 
-The following tools must be available at the start of every Claude Code session for this project. If any are missing or failing, surface the issue before doing other work.
+| Package | Library ID |
+|---------|-----------|
+| Unity Entities | `/needle-mirror/com.unity.entities` |
+| Netcode for Entities | `/websites/unity3d_packages_com_unity_netcode_1_10_api` |
+| Unity Burst | `/needle-mirror/com.unity.burst` |
+| Unity Collections | `/websites/unity3d_packages_com_unity_collections_2_6` |
+| Unity Mathematics | `/websites/unity3d_packages_com_unity_mathematics_1_3` |
 
-| Tool | Purpose | How to verify |
-|------|---------|---------------|
-| **Unity MCP** (`mcp__unity-mcp__*`) | Read Unity console logs, run Editor commands, capture scene views, generate assets | Call `Unity_GetConsoleLogs` — expect `"success": true`. Installed by the **Unity AI Assistant** package (`com.unity.ai.assistant`); binary: `/Users/wjing/.unity/relay/relay_mac_arm64.app/Contents/MacOS/relay_mac_arm64 --mcp` |
-| **Context7** (`mcp__plugin_context7_context7__*`) | Fetch up-to-date Unity / Entities / Burst / Netcode API docs | Use pinned library IDs below — skip `resolve-library-id` unless querying a new package |
-| **Firecrawl / web search** (Firecrawl skills) | Broader web research — MMO architecture, community benchmarks, Three Kingdoms references | Invoke `firecrawl-search` skill and confirm results return |
+Use Context7 for any Unity/Entities/Burst/Netcode API question. Use Firecrawl for anything outside library docs. Use Unity MCP to inspect live Editor state rather than guessing.
 
-**Context7 pinned library IDs** (skip `resolve-library-id` for these):
-
-| Package | Library ID | Snippets |
-|---------|-----------|---------|
-| Unity Entities (DOTS/ECS) | `/needle-mirror/com.unity.entities` | 1187 |
-| Netcode for Entities | `/websites/unity3d_packages_com_unity_netcode_1_10_api` | 2512 |
-| Unity Burst | `/needle-mirror/com.unity.burst` | 112 |
-| Unity Collections | `/websites/unity3d_packages_com_unity_collections_2_6` | 647 |
-| Unity Mathematics | `/websites/unity3d_packages_com_unity_mathematics_1_3` | 306 |
-
-**Usage rules:**
-- Use **Context7** (`ctx7`) for any Unity, Entities, Burst, or Netcode for Entities API question before answering from memory.
-- Use **Firecrawl web search** for anything outside library API docs: MMO architecture patterns, mobile performance data, gameplay references, community benchmarks.
-- Use **Unity MCP** to inspect the live Editor state (console errors, scene view) rather than guessing what is happening in the project.
-
-## Scope discipline
-
-- **Do not write ECS systems or invent file layout without explicit user request.** The user drives scaffolding decisions.
-- When asked to add code, *first* read whatever exists at that time and extend existing patterns rather than introducing parallel ones.
-- Use **`ctx7`** for Unity / Entities / Burst / Netcode for Entities API questions before answering.
-- **Whenever you need information from the internet, use Firecrawl** (Firecrawl skills) for broader web research — MMO architecture patterns, mobile performance, Three Kingdoms gameplay references, community benchmarks, anything outside library API docs.
+**Scope:** Do not write ECS systems or invent file layout without explicit user request. When adding code, read existing patterns first and extend them.
 
 ## References
 
-- [docs/basic-idea.md](docs/basic-idea.md) — the original brief.
-- 热血三国 (Re Xue San Guo) — gameplay reference; see the Baidu Baike entry linked from `docs/basic-idea.md`.
-- [docs/research/](docs/research/) — dated, point-in-time deep-research snapshots with cited sources. Treat as reference, not spec — re-verify before relying on version-specific claims. Currently includes:
-  - [docs/research/2026-04-08-rxsg-gameplay-mechanics.md](docs/research/2026-04-08-rxsg-gameplay-mechanics.md) — full breakdown of 热血三国 systems (city, resources, generals, units, combat formulas, world map, alliances, monetization).
-  - [docs/research/2026-04-08-dots-netcode-mobile-mmo.md](docs/research/2026-04-08-dots-netcode-mobile-mmo.md) — Unity DOTS + Netcode for Entities for mobile MMOs as of late 2025: server architecture, AOI, mobile constraints, known limitations, alternatives.
+- [docs/basic-idea.md](docs/basic-idea.md) — original brief
+- [docs/research/2026-04-08-rxsg-gameplay-mechanics.md](docs/research/2026-04-08-rxsg-gameplay-mechanics.md) — 热血三国 system breakdown
+- [docs/research/2026-04-08-dots-netcode-mobile-mmo.md](docs/research/2026-04-08-dots-netcode-mobile-mmo.md) — DOTS + Netcode for mobile MMOs (late 2025); re-verify version-specific claims before relying on them
