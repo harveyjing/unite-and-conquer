@@ -36,7 +36,12 @@ namespace Demo
         {
             var doc = GetComponent<UIDocument>();
             var root = doc.rootVisualElement;
-            if (root == null) return;
+            if (root == null)
+            {
+                Debug.LogError("DemoHudController: UIDocument rootVisualElement is null.");
+                enabled = false;
+                return;
+            }
 
             _viewModel = new DemoHudViewModel();
             root.dataSource = _viewModel;

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**Netcode demo working end-to-end.** Unity 6000.4.1f1 / URP. The full Netcode for Entities connection lifecycle is functional: `ClientServerBootstrap` spins up both worlds on Play, `GoInGame` RPC marks the stream in-game, the server spawns a predicted player ghost, and the client drives it with WASD through predicted simulation. A MonoBehaviour camera bridges ECS world state to the Unity Camera. Re-run `/init` once the first real game systems (combat, city, resources) begin landing.
+**Netcode + UI Toolkit demo working end-to-end.** Unity 6000.4.1f1 / URP. The full Netcode for Entities connection lifecycle is functional: `ClientServerBootstrap` spins up both worlds on Play, `GoInGame` RPC marks the stream in-game, the server spawns a predicted player ghost, and the client drives it with WASD through predicted simulation. A MonoBehaviour camera and a UI Toolkit HUD both bridge ECS world state to the main thread. The HUD demonstrates both ECS→UI (runtime data binding via `DemoHudViewModel`) and UI→ECS (RPC buttons `RespawnRequest` / `SpawnObstacleRequest`). Re-run `/init` once the first real game systems (combat, city, resources) begin landing.
 
 ## Unity project
 
@@ -40,13 +40,25 @@ Reference mechanics (anchor points, not a spec): four resources (wood/grain/ston
 
 ## Current code structure
 
-All ECS code lives under `Assets/Scripts/Demo/` (`Demo` namespace):
+All code lives under `Assets/Scripts/Demo/` (`Demo` namespace):
 
 - **`Bootstrap/`** — `ClientServerBootstrap` subclass, `GoInGame` RPC handshake
 - **`Authoring/`** — MonoBehaviour authoring components and their bakers
 - **`System/`** — Burst `ISystem` implementations
+- **`UI/`** — `DemoHudViewModel`, `DemoHudController`, `RespawnRequest`, `SpawnObstacleRequest`
+- **`CameraFollowMono.cs`** (top-level in `Demo/`) — MonoBehaviour that bridges ECS → `UnityEngine.Camera`; also the idiom for lazy client-world lookup used by `DemoHudController`
+
+UI assets live under `Assets/UI/` (`DemoHud.uxml`, `DemoHud.uss`, `DemoHudPanelSettings.asset`).
 
 Pattern: **tag/component → authoring+baker → Burst `ISystem`**. Ghost prefab in `Assets/Prefabs/`. NetCode settings in `ProjectSettings/`.
+
+## UI Toolkit conventions
+
+Runtime data binding in Unity 6000.4.1f1:
+- Interface is **`INotifyBindablePropertyChanged`** (`INotifyBindingPropertyChanged` does not exist).
+- Properties need `[CreateProperty]` from `Unity.Properties`.
+- `PanelSettings.themeUss` only accepts `.tss`; load USS via `<Style src="DemoHud.uss" />` inside `<ui:UXML>`.
+- `DemoHudController` is the template for future panels: lazy client-world find, `EntityQuery` cache in `Update`, short-circuit setters on the view model.
 
 ## DOTS conventions
 
