@@ -1,18 +1,21 @@
-using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.NetCode;
 using Unity.Physics;
-using Unity.Physics.Authoring;
 using Unity.Rendering;
-using Unity.Transforms;
 using UnityEngine;
 
 namespace Demo
 {
     // Replicated to clients (used for HUD counts).
     [GhostComponent(PrefabType = GhostPrefabType.All)]
-    public struct Soldier : IComponentData { }
+    public struct Soldier : IComponentData
+    {
+        // CollisionFilter layer bit shared by soldier colliders and by the
+        // TargetingSystem broadphase query filter. Define here so the
+        // bit is named in exactly one place.
+        public const uint Layer = 1u << 1;
+    }
 
     // Replicated as a single int per ghost. 0 = Red, 1 = Blue.
     [GhostComponent(PrefabType = GhostPrefabType.All)]
@@ -69,7 +72,7 @@ namespace Demo
                 // Query-only sphere collider on layer 1.
                 var filter = new CollisionFilter
                 {
-                    BelongsTo    = 1u << 1,
+                    BelongsTo    = Soldier.Layer,
                     CollidesWith = 0u,
                     GroupIndex   = 0,
                 };
