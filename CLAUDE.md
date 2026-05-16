@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Editor:** 6000.4.1f1 · **URP:** 17.4.0 · **Input System:** 1.19.0 · **API:** .NET Standard 2.1
 - **Pinned DOTS packages:** `com.unity.entities.graphics` 6.4.0 · `com.unity.netcode` 1.11.0
-- **Open via** Unity Hub → Add → select repo root. Do not use `unity-editor` CLI.
+- **Open via** Unity Hub → Add → select repo root. Do not use `unity-editor` CLI — use Unity MCP instead.
 - **Tests:** Window → General → Test Runner. ECS unit tests use `Unity.Entities.Tests` in an `EditMode` assembly. No `.asmdef` files yet — all code compiles into `Assembly-CSharp`.
 
 ## Design vision
@@ -76,13 +76,21 @@ Runtime data binding in Unity 6000.4.1f1:
 - **Burst on iOS** has historical crash reports — keep a feature-flag fallback.
 - No public benchmark for Netcode for Entities serving 1k–10k entities to mobile cellular clients — build incremental load tests early.
 
+## Unity Editor operations via MCP
+
+**All Unity Editor interactions must go through Unity MCP (`mcp__unity-mcp__*`) — never the `unity-editor` CLI.**
+
+After every code change or Editor command, call `Unity_GetConsoleLogs` and confirm zero errors before reporting done. For visual changes, capture the scene view via MCP to confirm the result.
+
+At session start, call `Unity_GetConsoleLogs` and confirm `"success": true` before any other work. Surface failures immediately — the Editor is likely not running.
+
 ## Required tools
 
 Verify these at session start; surface failures before other work.
 
 | Tool | Purpose |
 |------|---------|
-| **Unity MCP** (`mcp__unity-mcp__*`) | Console logs, Editor commands, scene capture. Call `Unity_GetConsoleLogs` — expect `"success": true` |
+| **Unity MCP** (`mcp__unity-mcp__*`) | All Editor operations and validation — see section above |
 | **Context7** (`mcp__plugin_context7_context7__*`) | Up-to-date Unity / Entities / Burst / Netcode API docs — use before answering from memory |
 | **Firecrawl** (Firecrawl skills) | Web research: MMO architecture, benchmarks, Three Kingdoms references |
 
