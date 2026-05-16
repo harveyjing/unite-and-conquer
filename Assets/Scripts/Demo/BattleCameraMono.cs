@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Demo
 {
@@ -19,38 +20,41 @@ namespace Demo
         [Tooltip("Panning speed in world units per pixel dragged.")]
         public float PanSpeed = 0.3f;
 
-        Vector3 _lastMousePos;
+        Vector2 _lastMousePos;
 
         void Update()
         {
-            HandleZoom();
-            HandlePan();
+            var mouse = Mouse.current;
+            if (mouse == null) return;
+
+            HandleZoom(mouse);
+            HandlePan(mouse);
         }
 
-        void HandleZoom()
+        void HandleZoom(Mouse mouse)
         {
-            float scroll = Input.GetAxis("Mouse ScrollWheel");
+            float scroll = mouse.scroll.ReadValue().y;
             if (scroll == 0f) return;
 
-            var cam = transform;
-            Vector3 newPos = cam.position + cam.forward * (scroll * ZoomSpeed);
+            // Normalise: Input System reports pixels; divide to get notch-like feel.
+            scroll *= 0.01f;
 
-            // Clamp so camera stays between MinHeight and MaxHeight above Y=0.
+            Vector3 newPos = transform.position + transform.forward * (scroll * ZoomSpeed);
             newPos.y = Mathf.Clamp(newPos.y, MinHeight, MaxHeight);
-            cam.position = newPos;
+            transform.position = newPos;
         }
 
-        void HandlePan()
+        void HandlePan(Mouse mouse)
         {
-            if (Input.GetMouseButtonDown(2))
-                _lastMousePos = Input.mousePosition;
+            if (mouse.middleButton.wasPressedThisFrame)
+                _lastMousePos = mouse.position.ReadValue();
 
-            if (Input.GetMouseButton(2))
+            if (mouse.middleButton.isPressed)
             {
-                Vector3 delta = Input.mousePosition - _lastMousePos;
-                _lastMousePos = Input.mousePosition;
+                Vector2 pos = mouse.position.ReadValue();
+                Vector2 delta = pos - _lastMousePos;
+                _lastMousePos = pos;
 
-                // Pan on XZ plane using the camera's local right and the world X axis.
                 Vector3 move = -transform.right * delta.x * PanSpeed
                              + -Vector3.forward * delta.y * PanSpeed;
                 transform.position += move;
