@@ -18,13 +18,30 @@ namespace Demo
     [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     public partial struct BattleSpawnSystem : ISystem
     {
+        ComponentLookup<LocalTransform>                 _xformLookup;
+        ComponentLookup<Team>                           _teamLookup;
+        ComponentLookup<Health>                         _healthLookup;
+        ComponentLookup<AttackStats>                    _attackLookup;
+        ComponentLookup<URPMaterialPropertyBaseColor>   _colorLookup;
+
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<BattleConfig>();
+            _xformLookup  = state.GetComponentLookup<LocalTransform>(false);
+            _teamLookup   = state.GetComponentLookup<Team>(false);
+            _healthLookup = state.GetComponentLookup<Health>(false);
+            _attackLookup = state.GetComponentLookup<AttackStats>(false);
+            _colorLookup  = state.GetComponentLookup<URPMaterialPropertyBaseColor>(false);
         }
 
         public void OnUpdate(ref SystemState state)
         {
+            _xformLookup.Update(ref state);
+            _teamLookup.Update(ref state);
+            _healthLookup.Update(ref state);
+            _attackLookup.Update(ref state);
+            _colorLookup.Update(ref state);
+
             var config = SystemAPI.GetSingleton<BattleConfig>();
             var em = state.EntityManager;
 
@@ -33,11 +50,11 @@ namespace Demo
 
             var gridSide = (int)math.ceil(math.sqrt(config.CountPerSide));
 
-            var xformLookup  = state.GetComponentLookup<LocalTransform>(false);
-            var teamLookup   = state.GetComponentLookup<Team>(false);
-            var healthLookup = state.GetComponentLookup<Health>(false);
-            var attackLookup = state.GetComponentLookup<AttackStats>(false);
-            var colorLookup  = state.GetComponentLookup<URPMaterialPropertyBaseColor>(false);
+            var xformLookup  = _xformLookup;
+            var teamLookup   = _teamLookup;
+            var healthLookup = _healthLookup;
+            var attackLookup = _attackLookup;
+            var colorLookup  = _colorLookup;
 
             var initRed = new InitSoldierJob
             {

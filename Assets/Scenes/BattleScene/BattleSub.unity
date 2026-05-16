@@ -153,7 +153,7 @@ MonoBehaviour:
   Spacing: 1.5
   RedCenter: {x: -90, y: 0, z: 0}
   BlueCenter: {x: 90, y: 0, z: 0}
-  SearchRadius: 50
+  SearchRadius: 200
   MoveSpeed: 2
   AttackRange: 0.8
   Dps: 25

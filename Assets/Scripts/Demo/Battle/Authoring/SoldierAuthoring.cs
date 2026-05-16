@@ -69,11 +69,11 @@ namespace Demo
                 AddComponent(entity, new Target { Value = Entity.Null });
                 AddComponent(entity, new URPMaterialPropertyBaseColor { Value = new float4(1, 1, 1, 1) });
 
-                // Query-only sphere collider on layer 1.
+                // CollidesWith = Soldier.Layer, not 0u: PointDistanceInput filter check is bidirectional; kinematic mass prevents impulses.
                 var filter = new CollisionFilter
                 {
                     BelongsTo    = Soldier.Layer,
-                    CollidesWith = 0u,
+                    CollidesWith = Soldier.Layer,
                     GroupIndex   = 0,
                 };
                 var collider = Unity.Physics.SphereCollider.Create(
@@ -97,6 +97,10 @@ namespace Demo
                 // Kinematic mass means physics never integrates this body;
                 // we only use it for distance queries.
                 AddComponent(entity, PhysicsMass.CreateKinematic(MassProperties.UnitSphere));
+
+                // Required by BuildPhysicsWorld in Unity.Physics 1.x to include this body
+                // in the broadphase. Default value 0 = the default physics world.
+                AddSharedComponent(entity, new PhysicsWorldIndex { Value = 0 });
             }
         }
     }

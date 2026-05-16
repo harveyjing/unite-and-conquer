@@ -37,7 +37,7 @@ namespace Demo
         public Vector3 BlueCenter = new Vector3( 20f, 0f, 0f);
 
         [Header("Combat tuning")]
-        public float SearchRadius = 50f;
+        public float SearchRadius = 200f;
         public float MoveSpeed    = 2f;
         public float AttackRange  = 0.8f;
         public float Dps          = 25f;

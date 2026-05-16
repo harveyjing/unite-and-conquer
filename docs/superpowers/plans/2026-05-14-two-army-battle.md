@@ -18,13 +18,11 @@
 
 No `.asmdef` test assemblies exist; the spec puts automated tests out of scope. Verification for every task is one of:
 
-- **Compile check** (code-only tasks): save file, Unity recompiles on focus; user confirms console has no compile errors.
-- **Editor task** (prefabs, scenes, UI assets): user performs steps in Unity Editor; the agent only verifies post-state via reading `.meta`/`.prefab`/`.unity` files where applicable.
-- **PlayMode check** (after a system lands): user opens `BattleScene.unity`, presses Play, verifies expected behavior in DOTS Hierarchy + Inspector windows.
+- **Compile check** (code-only tasks): call `Unity_GetConsoleLogs` and confirm zero `[error]` entries relating to the new file.
+- **Editor task** (prefabs, scenes, UI assets): user performs steps in Unity Editor; agent verifies post-state via `Unity_GetConsoleLogs` (no errors) and `Unity_SceneView_CaptureMultiAngleSceneView` where visual confirmation is needed.
+- **PlayMode check** (after a system lands): call `Unity_RunCommand` to open `BattleScene.unity` and enter Play mode, then `Unity_GetConsoleLogs` to verify expected log output, then `Unity_Camera_Capture` to visually confirm scene state.
 
 **`.meta` files: always commit them.** Every Unity asset (including each `.cs` file and every new directory under `Assets/`) has a sibling `<name>.meta` containing a GUID that other assets reference. If you commit `Foo.cs` without `Foo.cs.meta`, the GUID regenerates on clone and all references break. After creating any new file under `Assets/`, run `git status` and confirm the new `.meta` files are staged alongside their assets — including folder-level metas like `Battle.meta`, `Battle/System.meta`, etc. The git-add commands in each task below list only the primary file for brevity; you are responsible for adding the corresponding `.meta` files.
-
-Unity MCP tools (`Unity_GetConsoleLogs`, `Unity_Camera_Capture`, etc.) **are currently unavailable** — they disconnected mid-session. The user is the verifier for runtime behavior.
 
 The plan deliberately scales up at the very end (Task 14): every system through Task 13 is built and verified at `CountPerSide = 10` so spawn/movement/damage/death are observable entity-by-entity in the DOTS Inspector. Scaling to 10k only happens after all systems are correct.
 
@@ -99,11 +97,11 @@ grep -E '"com\.unity\.(entities|netcode|physics|entities\.graphics)"' Packages/m
 
 Expected output includes: `"com.unity.entities.graphics": "6.4.0"`, `"com.unity.netcode": "1.13.0"`, `"com.unity.physics": "1.4.6"`.
 
-- [ ] **Step 3: Ask user to confirm Editor compiles cleanly**
+- [ ] **Step 3: Confirm Editor compiles cleanly**
 
-User action: open Unity Editor, focus the project (triggers reload), open Console window (Window → General → Console). Confirm no red errors.
+Call `Unity_GetConsoleLogs` and confirm the result contains no `[error]` entries.
 
-If errors appear about Unity.Physics — that means the package wasn't fully resolved. User runs Window → Package Manager → press refresh.
+If errors appear about Unity.Physics, call `Unity_RunCommand` with `UnityEditor.PackageManager.Client.Resolve()` to trigger package resolution, then re-check logs.
 
 ---
 
@@ -236,9 +234,9 @@ using UnityEngine;
 
 - [ ] **Step 2: Verify compiles**
 
-Save file. Switch to Unity Editor (forces reload). Confirm Console has no errors related to `SoldierAuthoring.cs`, `Unity.Physics`, or `Unity.NetCode`.
+Call `Unity_GetConsoleLogs` and confirm no `[error]` entries mention `SoldierAuthoring.cs`, `Unity.Physics`, or `Unity.NetCode`.
 
-If `Unity.Physics.Authoring` namespace fails to resolve, that namespace may not be needed — remove the `using Unity.Physics.Authoring;` line (the baker only uses `Unity.Physics` types, not authoring types).
+If `Unity.Physics.Authoring` namespace fails to resolve: remove the `using Unity.Physics.Authoring;` line (the baker only uses `Unity.Physics` types, not authoring types).
 
 - [ ] **Step 3: Commit**
 
@@ -347,7 +345,7 @@ namespace Demo
 
 - [ ] **Step 2: Verify compiles**
 
-Save. Confirm no Console errors.
+Call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
 
 - [ ] **Step 3: Commit**
 
@@ -397,7 +395,7 @@ Add one line at the end of `OnCreate`:
 
 - [ ] **Step 3: Verify compiles**
 
-Save. Confirm no Console errors. SampleScene Play mode behavior is unchanged because `PrefabSpawner` exists in that scene.
+Call `Unity_GetConsoleLogs` and confirm no `[error]` entries. SampleScene Play mode behavior is unchanged because `PrefabSpawner` exists in that scene.
 
 - [ ] **Step 4: Commit**
 
@@ -675,20 +673,19 @@ namespace Demo
 
 - [ ] **Step 2: Verify compiles**
 
-Save. Confirm Console has no errors.
+Call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
 
 - [ ] **Step 3: PlayMode verification (CountPerSide = 10)**
 
-User actions:
-1. Open `Assets/Scenes/BattleScene.unity`.
-2. Verify the `BattleConfig` GameObject in the subscene has `Count Per Side = 10`.
-3. Press Play.
-4. Console: expect one log line `BattleSpawnSystem: spawned 10 red + 10 blue soldiers.`.
-5. Open Window → Entities → Hierarchy. Filter the **ServerWorld**. Expect 20 entities with the `Soldier` component (plus a `BattleConfig` singleton entity).
-6. Filter the **ClientWorld**. Expect ~20 ghost entities with `Soldier` and `Team` components (replication may take a few ticks).
-7. Scene view: 20 cubes should be visible in two opposing rectangles centered on `(-20, 0, 0)` and `(20, 0, 0)`. Red cubes are on the -X side, blue on +X.
+1. Call `Unity_RunCommand` to open the scene and enter Play mode:
+   ```
+   EditorSceneManager.OpenScene("Assets/Scenes/BattleScene.unity"); EditorApplication.EnterPlaymode();
+   ```
+2. Call `Unity_GetConsoleLogs`. Expect one log line containing `BattleSpawnSystem: spawned 10 red + 10 blue soldiers.` and no `[error]` entries.
+3. Call `Unity_SceneView_CaptureMultiAngleSceneView` to confirm two opposing grid blocks of ~10 cubes are visible — red block near `(-20, 0, 0)`, blue block near `(20, 0, 0)`.
+4. Call `Unity_Camera_Capture` to confirm the game camera shows both blocks in the overhead view.
 
-If cubes are uncolored (white), the URP material likely doesn't have GPU instancing enabled (Task 4 Step 2). Fix the material and retry.
+If cubes are uncolored (white), GPU instancing is not enabled on the material — fix in Task 4 Step 2 and re-verify.
 
 - [ ] **Step 4: Commit (fold in package manifest changes)**
 
@@ -836,14 +833,21 @@ namespace Demo
 
 - [ ] **Step 2: Verify compiles**
 
-Save. Confirm no Console errors.
+Call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
 
 - [ ] **Step 3: PlayMode verification**
 
-1. Open `BattleScene`, press Play (still CountPerSide = 10).
-2. Window → Entities → Hierarchy → ServerWorld. Pick any soldier entity, view its components.
-3. Expect `Target.Value` to be a non-null Entity reference. Click through the reference: the referenced entity should be in the OPPOSITE team (Red soldiers target Blue, vice versa).
-4. Verify by checking `Team.Value` on the source and target.
+1. Call `Unity_RunCommand` to enter Play mode (BattleScene already open from Task 6 verification).
+2. Call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
+3. Call `Unity_RunCommand` to log targeting diagnostics:
+   ```
+   var q = World.DefaultGameObjectInjectionWorld.EntityManager.CreateEntityQuery(typeof(Demo.Target));
+   var targets = q.ToComponentDataArray<Demo.Target>(Unity.Collections.Allocator.Temp);
+   int nullCount = 0; for(int i=0;i<targets.Length;i++) if(targets[i].Value==Unity.Entities.Entity.Null) nullCount++;
+   Debug.Log($"TargetingSystem: {targets.Length} soldiers, {nullCount} with null targets (expect 0)");
+   targets.Dispose(); q.Dispose();
+   ```
+   Confirm the log shows 20 soldiers and 0 null targets.
 
 - [ ] **Step 4: Commit**
 
@@ -938,15 +942,16 @@ namespace Demo
 
 - [ ] **Step 2: Verify compiles**
 
-Save. Confirm no Console errors.
+Call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
 
 - [ ] **Step 3: PlayMode verification**
 
-1. Open `BattleScene`, press Play.
-2. Watch the Scene view: the two cube blocks should march toward each other along X and merge in the middle.
-3. Soldiers should stop moving once they're in melee contact (within `AttackRange = 0.8`).
+1. Call `Unity_RunCommand` to enter Play mode.
+2. Call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
+3. After ~3 seconds of sim time, call `Unity_SceneView_CaptureMultiAngleSceneView` to confirm the two cube blocks have converged toward the center of the battlefield.
+4. Call `Unity_Camera_Capture` to confirm soldiers are clumped together (no longer in separate blocks).
 
-Note: at this point, no damage is applied — soldiers will simply pile up in the middle indefinitely. That's expected; Task 9 adds damage.
+Note: at this point no damage is applied — soldiers will pile up in the middle indefinitely. That's expected; Task 9 adds damage.
 
 - [ ] **Step 4: Commit**
 
@@ -1113,16 +1118,25 @@ namespace Demo
 
 - [ ] **Step 2: Verify compiles**
 
-Save. Confirm no Console errors.
+Call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
 
 Common error to watch for: if `NativeStream.AsWriter()` complains, ensure `using Unity.Collections;` is present. If `IJobChunk.Execute` signature errors, the `v128` parameter comes from `using Unity.Burst.Intrinsics;`.
 
 - [ ] **Step 3: PlayMode verification**
 
-1. Open `BattleScene`, press Play.
-2. Watch the Scene view as armies converge.
-3. Window → Entities → Hierarchy → ServerWorld. Pick a soldier currently in contact. Watch `Health.Current` decrease tick by tick.
-4. With `Dps = 25`, `MaxHealth = 50`, two soldiers in contact mutually kill each other in ~1 second of simulated time. (No despawn yet — DeathSystem lands in Task 10. Soldiers with `Health.Current <= 0` will keep accumulating negative health.)
+1. Call `Unity_RunCommand` to enter Play mode.
+2. Call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
+3. After ~3 seconds of sim time, call `Unity_RunCommand` to log health diagnostics:
+   ```
+   var q = World.DefaultGameObjectInjectionWorld.EntityManager.CreateEntityQuery(typeof(Demo.Health));
+   var healths = q.ToComponentDataArray<Demo.Health>(Unity.Collections.Allocator.Temp);
+   int damaged = 0; for(int i=0;i<healths.Length;i++) if(healths[i].Current < healths[i].Max) damaged++;
+   Debug.Log($"MeleeDamageSystem: {healths.Length} soldiers, {damaged} have taken damage (expect >0 after armies meet)");
+   healths.Dispose(); q.Dispose();
+   ```
+   Confirm the log shows `damaged > 0`.
+
+Note: DeathSystem lands in Task 10 — soldiers with `Health.Current <= 0` accumulate negative health but are not yet destroyed.
 
 - [ ] **Step 4: Commit**
 
@@ -1186,14 +1200,21 @@ namespace Demo
 
 - [ ] **Step 2: Verify compiles**
 
-Save. Confirm no Console errors.
+Call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
 
 - [ ] **Step 3: PlayMode verification**
 
-1. Open `BattleScene`, press Play.
-2. Watch armies converge, fight, and **dwindle**. Server-world Soldier count should drop over time, and client-world ghosts should despawn correspondingly.
-3. With 10 vs 10 and roughly equal stats, expect mostly-mutual annihilation in ~2-4 seconds of sim time.
-4. Open Window → Entities → Hierarchy → ServerWorld. Filter for `Soldier`. After ~5 seconds, count should approach 0 (or a small surviving handful).
+1. Call `Unity_RunCommand` to enter Play mode.
+2. Call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
+3. After ~5 seconds of sim time, call `Unity_RunCommand` to log survivor counts:
+   ```
+   var q = World.DefaultGameObjectInjectionWorld.EntityManager.CreateEntityQuery(typeof(Demo.Soldier));
+   int remaining = q.CalculateEntityCount();
+   Debug.Log($"DeathSystem: {remaining} soldiers remaining (expect near 0 after ~5s at CountPerSide=10)");
+   q.Dispose();
+   ```
+   Confirm `remaining` is significantly less than 20 (ideally 0–3).
+4. Call `Unity_Camera_Capture` to confirm the battlefield is sparse or empty.
 
 - [ ] **Step 4: Commit**
 
@@ -1279,7 +1300,7 @@ namespace Demo
 
 - [ ] **Step 2: Verify compiles**
 
-Save. Confirm no Console errors.
+Call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
 
 - [ ] **Step 3: Commit**
 
@@ -1409,7 +1430,7 @@ namespace Demo
 
 - [ ] **Step 2: Verify compiles**
 
-Save. Confirm no Console errors.
+Call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
 
 - [ ] **Step 3: Commit**
 
@@ -1513,14 +1534,14 @@ grep -c "BattleHud.uxml" Assets/Scenes/BattleScene.unity
 grep -c "BattleHudController" Assets/Scenes/BattleScene.unity
 ```
 
-Expected: both files exist; both greps return ≥ 1.
+Expected: both files exist; both greps return ≥ 1. Then call `Unity_GetConsoleLogs` and confirm no `[error]` entries.
 
 - [ ] **Step 5: PlayMode verification**
 
-1. Open `Assets/Scenes/BattleScene.unity`, press Play (CountPerSide still 10).
-2. Top-left of Game view: see two coloured labels "Red: 10" and "Blue: 10" decrementing as soldiers die.
-3. Once one side reaches 0, the yellow "RED WINS" / "BLUE WINS" banner appears centered below the counts.
-4. If counts stay at 0 throughout: BattleHudController found the client world too early or the EntityQuery isn't matching. Check: ghost soldiers should have both `Soldier` and `Team` on the client (verify in Entities Hierarchy → ClientWorld).
+1. Call `Unity_RunCommand` to enter Play mode.
+2. After ~2 seconds (HUD initializes), call `Unity_Camera_Capture` to confirm two coloured labels — "Red: N" and "Blue: N" — are visible in the top-left of the Game view.
+3. After ~5 seconds (battle concludes), call `Unity_Camera_Capture` again to confirm the yellow "RED WINS" / "BLUE WINS" banner has appeared.
+4. Call `Unity_GetConsoleLogs` and confirm no `[error]` entries. If counts stayed at 0 throughout, a `[error]` about `BattleHudController` or missing `Soldier`/`Team` components on the client will appear here.
 
 - [ ] **Step 6: Commit**
 
@@ -1540,20 +1561,39 @@ This is the actual stress test. Everything must already work correctly at 10/sid
 
 - [ ] **Step 1: Bump the count**
 
-User action:
-1. Open `Assets/Scenes/BattleScene.unity`.
-2. Enter the subscene (`BattleSub`).
-3. Select `BattleConfig` GameObject. Inspector → `Battle Config Authoring` → set **Count Per Side** to `10000`.
-4. The grid will be `ceil(sqrt(10000)) = 100` rows × 100 cols. Default spacing `1.5` makes each block 150m × 150m. Adjust `RedCenter` / `BlueCenter` so the blocks don't overlap — recommended `(-90, 0, 0)` and `(90, 0, 0)` (a 180m gap centered on origin).
-5. (Optional) Move the camera back: select `Main Camera` in the top-level scene → Position `(0, 200, -120)`, Rotation `(55, 0, 0)`.
-6. Save subscene + scene.
+Call `Unity_RunCommand` to set `CountPerSide = 10000`, spread spawn centers, and save:
+```
+var subScene = UnityEditor.SceneManagement.EditorSceneManager.OpenScene("Assets/Scenes/BattleScene/BattleSub.unity", UnityEditor.SceneManagement.OpenSceneMode.Additive);
+var go = GameObject.Find("BattleConfig");
+var auth = go.GetComponent<Demo.BattleConfigAuthoring>();
+auth.CountPerSide = 10000;
+auth.RedCenter  = new UnityEngine.Vector3(-90f, 0f, 0f);
+auth.BlueCenter = new UnityEngine.Vector3( 90f, 0f, 0f);
+UnityEditor.EditorUtility.SetDirty(go);
+UnityEditor.SceneManagement.EditorSceneManager.SaveScene(subScene);
+```
+
+The grid will be `ceil(sqrt(10000)) = 100` rows × 100 cols. Spacing `1.5` makes each block 150 m × 150 m; centers at ±90 m give a 30 m gap between blocks.
+
+(Optional) Call `Unity_RunCommand` to pull the camera back:
+```
+var cam = GameObject.Find("Main Camera");
+cam.transform.position = new UnityEngine.Vector3(0, 200, -120);
+cam.transform.eulerAngles = new UnityEngine.Vector3(55, 0, 0);
+UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes();
+```
 
 - [ ] **Step 2: PlayMode verification**
 
-1. Press Play. Expect a 1-3 second hitch as `BattleSpawnSystem` instantiates 20,000 entities.
-2. Watch: 20,000 cubes spawn in two opposing blocks → march together → clash → cumulative casualties.
-3. HUD counts should decrease (slowly at first, faster as combat density rises in the center).
-4. Open Window → Analysis → Profiler. Watch the **CPU Usage** module. Expect `GhostSendSystem` to be a hot spot (server replication of 20k ghosts). If frame time is > 200 ms / frame consistently, consider reducing CountPerSide to 5000 and noting the result.
+1. Call `Unity_RunCommand` to enter Play mode.
+2. Call `Unity_GetConsoleLogs` after ~5 seconds. Expect the log line `BattleSpawnSystem: spawned 10000 red + 10000 blue soldiers.` and no `[error]` entries. The 1-3 second hitch during instantiation is expected.
+3. Call `Unity_SceneView_CaptureMultiAngleSceneView` to confirm 20,000 cubes have spawned in two opposing 100×100 blocks.
+4. Call `Unity_Camera_Capture` to confirm HUD counts are decrementing from 10000 as casualties accumulate.
+5. If frame time is > 200 ms consistently, call `Unity_RunCommand` to enable profiler logging:
+   ```
+   UnityEngine.Profiling.Profiler.logFile = "/tmp/battle_profile.log"; UnityEngine.Profiling.Profiler.enableBinaryLog = true; UnityEngine.Profiling.Profiler.enabled = true;
+   ```
+   Expect `GhostSendSystem` to be a hot spot. If sustained > 200 ms, consider reducing CountPerSide to 5000 and noting the result.
 
 - [ ] **Step 3: Capture an observation note (optional but recommended)**
 
