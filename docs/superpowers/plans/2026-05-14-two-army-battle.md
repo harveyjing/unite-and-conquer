@@ -22,6 +22,8 @@ No `.asmdef` test assemblies exist; the spec puts automated tests out of scope. 
 - **Editor task** (prefabs, scenes, UI assets): user performs steps in Unity Editor; the agent only verifies post-state via reading `.meta`/`.prefab`/`.unity` files where applicable.
 - **PlayMode check** (after a system lands): user opens `BattleScene.unity`, presses Play, verifies expected behavior in DOTS Hierarchy + Inspector windows.
 
+**`.meta` files: always commit them.** Every Unity asset (including each `.cs` file and every new directory under `Assets/`) has a sibling `<name>.meta` containing a GUID that other assets reference. If you commit `Foo.cs` without `Foo.cs.meta`, the GUID regenerates on clone and all references break. After creating any new file under `Assets/`, run `git status` and confirm the new `.meta` files are staged alongside their assets — including folder-level metas like `Battle.meta`, `Battle/System.meta`, etc. The git-add commands in each task below list only the primary file for brevity; you are responsible for adding the corresponding `.meta` files.
+
 Unity MCP tools (`Unity_GetConsoleLogs`, `Unity_Camera_Capture`, etc.) **are currently unavailable** — they disconnected mid-session. The user is the verifier for runtime behavior.
 
 The plan deliberately scales up at the very end (Task 14): every system through Task 13 is built and verified at `CountPerSide = 10` so spawn/movement/damage/death are observable entity-by-entity in the DOTS Inspector. Scaling to 10k only happens after all systems are correct.
@@ -753,7 +755,7 @@ namespace Demo
             var queryFilter = new CollisionFilter
             {
                 BelongsTo    = ~0u,
-                CollidesWith = 1u << 1,   // Soldier layer
+                CollidesWith = Soldier.Layer,
                 GroupIndex   = 0,
             };
 
