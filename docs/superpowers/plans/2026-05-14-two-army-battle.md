@@ -876,6 +876,7 @@ Step toward target each tick unless within attack range. Burst `IJobEntity`.
 
 ```csharp
 using Unity.Burst;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.NetCode;
