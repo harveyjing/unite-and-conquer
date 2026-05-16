@@ -149,10 +149,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Demo.BattleConfigAuthoring
   SoldierPrefab: {fileID: 1609680924800798176, guid: 00ee3a61683cc45fabdcc57d8c63b97e, type: 3}
-  CountPerSide: 10
+  CountPerSide: 10000
   Spacing: 1.5
-  RedCenter: {x: -20, y: 0, z: 0}
-  BlueCenter: {x: 20, y: 0, z: 0}
+  RedCenter: {x: -90, y: 0, z: 0}
+  BlueCenter: {x: 90, y: 0, z: 0}
   SearchRadius: 50
   MoveSpeed: 2
   AttackRange: 0.8
