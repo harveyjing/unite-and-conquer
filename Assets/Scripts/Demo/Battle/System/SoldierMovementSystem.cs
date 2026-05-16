@@ -41,7 +41,11 @@ namespace Demo
         public float MoveSpeed;
         public float AttackRange;
         public float Dt;
-        [ReadOnly] public ComponentLookup<LocalTransform> XformLookup;
+        // Read-only lookup for target positions. [NativeDisableContainerSafetyRestriction]
+        // is required because IJobEntity generates an RW ComponentTypeHandle<LocalTransform>
+        // for the ref Execute parameter; we only ever read different entities (targets) here.
+        [ReadOnly, NativeDisableContainerSafetyRestriction]
+        public ComponentLookup<LocalTransform> XformLookup;
 
         public void Execute(ref LocalTransform xform, in Target target)
         {
