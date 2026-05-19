@@ -1,0 +1,26 @@
+{
+    "name": "Demo",
+    "rootNamespace": "Demo",
+    "references": [
+        "Unity.Entities",
+        "Unity.Entities.Hybrid",
+        "Unity.Entities.Graphics",
+        "Unity.Burst",
+        "Unity.Mathematics",
+        "Unity.Collections",
+        "Unity.Transforms",
+        "Unity.Physics",
+        "Unity.NetCode",
+        "Unity.Properties",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
