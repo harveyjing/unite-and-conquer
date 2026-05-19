@@ -119,12 +119,17 @@ namespace Demo.Tests
             World.SetTime(new TimeData(elapsed, dt));
         }
 
-        // Create system, tick once, return the SystemHandle.
+        // Create system, tick once, complete any in-flight jobs, return the SystemHandle.
+        // Completing state.Dependency is essential: systems under test commonly schedule
+        // parallel jobs but rely on a downstream system or end-of-frame to drain them.
+        // In a single-system unit test there's no such drainer, so we do it here before
+        // assertions read the data the job wrote.
         protected SystemHandle CreateAndUpdateSystem<T>() where T : unmanaged, ISystem
         {
             var handle = World.CreateSystem<T>();
-            World.Unmanaged.GetUnsafeSystemRef<T>(handle).OnUpdate(
-                ref World.Unmanaged.ResolveSystemStateRef(handle));
+            ref var stateRef = ref World.Unmanaged.ResolveSystemStateRef(handle);
+            World.Unmanaged.GetUnsafeSystemRef<T>(handle).OnUpdate(ref stateRef);
+            stateRef.Dependency.Complete();
             return handle;
         }
     }
