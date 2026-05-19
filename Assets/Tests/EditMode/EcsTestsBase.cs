@@ -11,11 +11,6 @@ namespace Demo.Tests
     // Minimal per-test ECS world. Avoids the Unity.Entities.Tests package
     // dependency. Subclasses get a fresh World + EntityManager and helpers
     // for the four entity shapes our systems read.
-    //
-    // CreateBattleConfig is added in Task 4 once BattleConfig grows the
-    // SquadSpacing / SoldierStepSpeed / SquadAdvanceSpeed / SquadRotationSpeed
-    // / ContactMargin / CompactionIntervalTicks / SquadsPerTeam / SquadRows /
-    // SquadCols fields it needs to reference.
     public abstract class EcsTestsBase
     {
         protected World         World;
@@ -35,6 +30,46 @@ namespace Demo.Tests
                 World.Dispose();
             World   = null;
             Manager = default;
+        }
+
+        protected Entity CreateBattleConfig(
+            int squadsPerTeam = 1,
+            int rows = 2,
+            int cols = 2,
+            float spacing = 1.5f,
+            float attackRange = 0.8f,
+            float dps = 25f,
+            float maxHealth = 50f,
+            float soldierStepSpeed = 2f,
+            float squadAdvanceSpeed = 2f,
+            float squadRotationSpeed = 2f,
+            float contactMargin = 0.1f,
+            int compactionIntervalTicks = 10,
+            int targetRefreshIntervalTicks = 1)
+        {
+            var e = Manager.CreateEntity(typeof(BattleConfig));
+            Manager.SetComponentData(e, new BattleConfig
+            {
+                SquadsPerTeam              = squadsPerTeam,
+                SquadRows                  = rows,
+                SquadCols                  = cols,
+                SquadSpacing               = spacing,
+                SquadAdvanceSpeed          = squadAdvanceSpeed,
+                SquadRotationSpeed         = squadRotationSpeed,
+                ContactMargin              = contactMargin,
+                CompactionIntervalTicks    = compactionIntervalTicks,
+                AttackRange                = attackRange,
+                Dps                        = dps,
+                MaxHealth                  = maxHealth,
+                SoldierStepSpeed           = soldierStepSpeed,
+                TargetRefreshIntervalTicks = targetRefreshIntervalTicks,
+                RedCenter                  = new float3(-5f, 0f, 0f),
+                BlueCenter                 = new float3( 5f, 0f, 0f),
+                RedColor                   = new float4(1f, 0f, 0f, 1f),
+                BlueColor                  = new float4(0f, 0f, 1f, 1f),
+                CountPerSide               = squadsPerTeam * rows * cols,
+            });
+            return e;
         }
 
         protected Entity CreateNetworkTime(uint tick = 1)

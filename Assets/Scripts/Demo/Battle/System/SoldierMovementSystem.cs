@@ -28,7 +28,7 @@ namespace Demo
 
             new SoldierStepJob
             {
-                MoveSpeed   = config.MoveSpeed,
+                MoveSpeed   = config.SoldierStepSpeed,
                 AttackRange = config.AttackRange,
                 Dt          = dt,
                 XformLookup = xformLookup,
