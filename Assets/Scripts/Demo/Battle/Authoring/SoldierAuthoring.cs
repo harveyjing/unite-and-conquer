@@ -70,6 +70,7 @@ namespace Demo
                 AddComponent(entity, new Health { Current = 0f, Max = 0f });
                 AddComponent(entity, new AttackStats { Range = 0f, Dps = 0f });
                 AddComponent(entity, new Target { Value = Entity.Null });
+                AddComponent(entity, new SquadMembership { Squad = Entity.Null, SlotIndex = -1 });
 
                 var filter = new CollisionFilter
                 {
