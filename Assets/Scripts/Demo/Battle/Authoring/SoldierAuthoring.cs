@@ -24,6 +24,14 @@ namespace Demo
         [GhostField] public int Value;
     }
 
+    // Replicated to clients; Entities.Graphics binds Value to the _BaseColor shader property.
+    [GhostComponent(PrefabType = GhostPrefabType.All)]
+    [MaterialProperty("_BaseColor")]
+    public struct SoldierColor : IComponentData
+    {
+        [GhostField] public float4 Value;
+    }
+
     // Server-only.
     [GhostComponent(PrefabType = GhostPrefabType.Server)]
     public struct Health : IComponentData
@@ -47,12 +55,6 @@ namespace Demo
         public Entity Value;
     }
 
-    // Authoring placed on the Soldier prefab GameObject (Task 4).
-    // Adds all five components plus a query-only PhysicsCollider and a
-    // URPMaterialPropertyBaseColor that BattleSpawnSystem overwrites per-team.
-    //
-    // PhysicsCollider is created programmatically (rather than via
-    // PhysicsShapeAuthoring) to make BelongsTo / CollidesWith explicit in code.
     [DisallowMultipleComponent]
     public class SoldierAuthoring : MonoBehaviour
     {
@@ -64,12 +66,11 @@ namespace Demo
 
                 AddComponent<Soldier>(entity);
                 AddComponent(entity, new Team { Value = 0 });
+                AddComponent(entity, new SoldierColor { Value = new float4(1, 1, 1, 1) });
                 AddComponent(entity, new Health { Current = 0f, Max = 0f });
                 AddComponent(entity, new AttackStats { Range = 0f, Dps = 0f });
                 AddComponent(entity, new Target { Value = Entity.Null });
-                AddComponent(entity, new URPMaterialPropertyBaseColor { Value = new float4(1, 1, 1, 1) });
 
-                // CollidesWith = Soldier.Layer, not 0u: PointDistanceInput filter check is bidirectional; kinematic mass prevents impulses.
                 var filter = new CollisionFilter
                 {
                     BelongsTo    = Soldier.Layer,
@@ -86,20 +87,14 @@ namespace Demo
                 AddBlobAsset(ref collider, out _);
                 AddComponent(entity, new PhysicsCollider { Value = collider });
 
-                // PhysicsVelocity (zero) marks the body as dynamic-tree resident
-                // so the broadphase is incrementally updated as soldiers move.
                 AddComponent(entity, new PhysicsVelocity
                 {
                     Linear  = float3.zero,
                     Angular = float3.zero,
                 });
 
-                // Kinematic mass means physics never integrates this body;
-                // we only use it for distance queries.
                 AddComponent(entity, PhysicsMass.CreateKinematic(MassProperties.UnitSphere));
 
-                // Required by BuildPhysicsWorld in Unity.Physics 1.x to include this body
-                // in the broadphase. Default value 0 = the default physics world.
                 AddSharedComponent(entity, new PhysicsWorldIndex { Value = 0 });
             }
         }

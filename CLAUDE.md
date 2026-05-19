@@ -4,7 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**Netcode + UI Toolkit demo working end-to-end.** Unity 6000.4.1f1 / URP. The full Netcode for Entities connection lifecycle is functional: `ClientServerBootstrap` spins up both worlds on Play, `GoInGame` RPC marks the stream in-game, the server spawns a predicted player ghost, and the client drives it with WASD through predicted simulation. A MonoBehaviour camera and a UI Toolkit HUD both bridge ECS world state to the main thread. The HUD demonstrates both ECS→UI (runtime data binding via `DemoHudViewModel`) and UI→ECS (RPC buttons `RespawnRequest` / `SpawnObstacleRequest`). Re-run `/init` once the first real game systems (combat, city, resources) begin landing.
+**Two-army battle simulation working end-to-end.** Unity 6000.4.1f1 / URP.
+
+- **SampleScene** — original Netcode demo: `ClientServerBootstrap` + `GoInGame` RPC handshake, predicted player ghost (WASD), `DemoHudController` UI Toolkit HUD with ECS↔UI data binding.
+- **BattleScene** — two-army melee battle: `BattleSpawnSystem` spawns N red vs N blue soldiers (server-only), `TargetingSystem` assigns nearest enemies via Physics broadphase, `SoldierMovementSystem` advances toward targets, `MeleeDamageSystem` deals damage, `DeathSystem` destroys at zero health. `BattleHudController` counts ghost soldiers per team client-side and shows a winner banner. `BattleCameraMono` provides scroll-wheel zoom and middle-mouse pan.
 
 ## Unity project
 
@@ -43,14 +46,32 @@ Reference mechanics (anchor points, not a spec): four resources (wood/grain/ston
 All code lives under `Assets/Scripts/Demo/` (`Demo` namespace):
 
 - **`Bootstrap/`** — `ClientServerBootstrap` subclass, `GoInGame` RPC handshake
-- **`Authoring/`** — MonoBehaviour authoring components and their bakers
-- **`System/`** — Burst `ISystem` implementations
+- **`Authoring/`** — MonoBehaviour authoring components and their bakers (SampleScene)
+- **`System/`** — Burst `ISystem` implementations (SampleScene player systems)
 - **`UI/`** — `DemoHudViewModel`, `DemoHudController`, `RespawnRequest`, `SpawnObstacleRequest`
-- **`CameraFollowMono.cs`** (top-level in `Demo/`) — MonoBehaviour that bridges ECS → `UnityEngine.Camera`; also the idiom for lazy client-world lookup used by `DemoHudController`
+- **`CameraFollowMono.cs`** / **`BattleCameraMono.cs`** — MonoBehaviour cameras; `CameraFollowMono` bridges ECS→camera (SampleScene); `BattleCameraMono` provides scroll-zoom + middle-mouse pan (BattleScene)
+- **`Battle/Authoring/`** — `SoldierAuthoring` (bakes `Soldier`, `Team`, `Health`, `AttackStats`, `Target`, `PhysicsCollider`; kinematic body for broadphase queries only), `BattleConfigAuthoring` (singleton `BattleConfig` that drives all battle systems)
+- **`Battle/System/`** — five server-only systems in strict execution order (see Battle system pipeline below)
+- **`Battle/UI/`** — `BattleHudController`, `BattleHudViewModel` (same pattern as `DemoHudController`)
 
-UI assets live under `Assets/UI/` (`DemoHud.uxml`, `DemoHud.uss`, `DemoHudPanelSettings.asset`).
+Scenes: `Assets/Scenes/SampleScene.unity` + subscene `EcsDemoSub.unity`; `Assets/Scenes/BattleScene.unity` + subscene `BattleSub.unity`.
+
+UI assets: `Assets/UI/DemoHud.{uxml,uss}`, `Assets/UI/BattleHud.{uxml,uss}`.
 
 Pattern: **tag/component → authoring+baker → Burst `ISystem`**. Ghost prefab in `Assets/Prefabs/`. NetCode settings in `ProjectSettings/`.
+
+## Battle system pipeline
+
+Execution order (all `ServerSimulation`, `SimulationSystemGroup`):
+
+1. **`TargetingSystem`** — throttled to every `TargetRefreshIntervalTicks` server ticks; uses `PhysicsWorldSingleton.CalculateDistance` with a custom `NearestEnemyCollector` (`ICollector<DistanceHit>`) to find the closest enemy per soldier. Requires `PhysicsWorldSingleton` and `NetworkTime` singletons.
+2. **`SoldierMovementSystem`** (`UpdateAfter(TargetingSystem)`) — moves each soldier toward its target; stops when within `AttackRange`.
+3. **`MeleeDamageSystem`** (`UpdateAfter(SoldierMovementSystem)`) — scatter/gather damage pattern: `WriteDamageJob` (parallel `IJobChunk`) writes `DamageEvent`s into a `NativeStream`; `ReduceDamageJob` (serial `IJob`) drains the stream and decrements `Health`. This avoids concurrent writes to the same victim.
+4. **`DeathSystem`** (`UpdateAfter(MeleeDamageSystem)`) — destroys entities with `Health.Current <= 0` via ECB.
+
+**`BattleSpawnSystem`** runs once on the first frame (before `TargetingSystem`, no ordering attribute needed): bulk `EntityManager.Instantiate` then `IJobParallelFor` to initialize per-entity data. Sets `state.Enabled = false` after spawning. ECB-per-entity would cost hundreds of ms at 10k+10k.
+
+**Physics setup in `SoldierAuthoring`:** kinematic `PhysicsMass`, zero `PhysicsVelocity`, `PhysicsWorldIndex(0)`. The body lives in the broadphase dynamic tree (so positions update as soldiers move) but physics never integrates it. `Soldier.Layer` (`1u << 1`) is the single source of truth for the collision filter layer bit used by both the collider and `TargetingSystem`'s `CollisionFilter`.
 
 ## UI Toolkit conventions
 

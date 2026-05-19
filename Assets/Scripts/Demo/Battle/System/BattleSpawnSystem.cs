@@ -4,7 +4,6 @@ using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.NetCode;
-using Unity.Rendering;
 using Unity.Transforms;
 using UnityEngine;
 
@@ -22,7 +21,7 @@ namespace Demo
         ComponentLookup<Team>                           _teamLookup;
         ComponentLookup<Health>                         _healthLookup;
         ComponentLookup<AttackStats>                    _attackLookup;
-        ComponentLookup<URPMaterialPropertyBaseColor>   _colorLookup;
+        ComponentLookup<SoldierColor>   _colorLookup;
 
         public void OnCreate(ref SystemState state)
         {
@@ -31,7 +30,7 @@ namespace Demo
             _teamLookup   = state.GetComponentLookup<Team>(false);
             _healthLookup = state.GetComponentLookup<Health>(false);
             _attackLookup = state.GetComponentLookup<AttackStats>(false);
-            _colorLookup  = state.GetComponentLookup<URPMaterialPropertyBaseColor>(false);
+            _colorLookup  = state.GetComponentLookup<SoldierColor>(false);
         }
 
         public void OnUpdate(ref SystemState state)
@@ -118,7 +117,7 @@ namespace Demo
             [NativeDisableParallelForRestriction] public ComponentLookup<Team> TeamLookup;
             [NativeDisableParallelForRestriction] public ComponentLookup<Health> HealthLookup;
             [NativeDisableParallelForRestriction] public ComponentLookup<AttackStats> AttackLookup;
-            [NativeDisableParallelForRestriction] public ComponentLookup<URPMaterialPropertyBaseColor> ColorLookup;
+            [NativeDisableParallelForRestriction] public ComponentLookup<SoldierColor> ColorLookup;
 
             public void Execute(int i)
             {
@@ -135,7 +134,7 @@ namespace Demo
                 TeamLookup[e]   = new Team { Value = TeamValue };
                 HealthLookup[e] = new Health { Current = MaxHealth, Max = MaxHealth };
                 AttackLookup[e] = new AttackStats { Range = AttackRange, Dps = Dps };
-                ColorLookup[e]  = new URPMaterialPropertyBaseColor { Value = TeamColor };
+                ColorLookup[e]  = new SoldierColor { Value = TeamColor };
             }
         }
     }
