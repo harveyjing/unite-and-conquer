@@ -48,13 +48,6 @@ namespace Demo
         public float Dps;
     }
 
-    // Server-only. Refreshed by TargetingSystem every TargetRefreshIntervalTicks.
-    [GhostComponent(PrefabType = GhostPrefabType.Server)]
-    public struct Target : IComponentData
-    {
-        public Entity Value;
-    }
-
     [DisallowMultipleComponent]
     public class SoldierAuthoring : MonoBehaviour
     {
@@ -69,7 +62,6 @@ namespace Demo
                 AddComponent(entity, new SoldierColor { Value = new float4(1, 1, 1, 1) });
                 AddComponent(entity, new Health { Current = 0f, Max = 0f });
                 AddComponent(entity, new AttackStats { Range = 0f, Dps = 0f });
-                AddComponent(entity, new Target { Value = Entity.Null });
                 AddComponent(entity, new SquadMembership { Squad = Entity.Null, SlotIndex = -1 });
 
                 var filter = new CollisionFilter

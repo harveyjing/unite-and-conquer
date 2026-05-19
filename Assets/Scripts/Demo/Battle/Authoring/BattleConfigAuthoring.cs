@@ -37,10 +37,6 @@ namespace Demo
         public float MaxHealth;
         public int   TargetRefreshIntervalTicks;
 
-        // Kept until Task 11 deletes TargetingSystem (its only consumer).
-        // SquadTargetingSystem does not use the physics broadphase.
-        public float SearchRadius;
-
         // Visuals.
         public float4 RedColor;
         public float4 BlueColor;
@@ -75,9 +71,6 @@ namespace Demo
         public float Dps              = 25f;
         public float MaxHealth        = 50f;
         public int   TargetRefreshIntervalTicks = 5;
-
-        // Removed once TargetingSystem is deleted in Task 11.
-        public float SearchRadius = 200f;
 
         [Header("Team colors (RGBA, linear)")]
         public Color RedColor  = new Color(1f, 0.1f, 0.1f, 1f);
@@ -116,7 +109,6 @@ namespace Demo
                     Dps                        = authoring.Dps,
                     MaxHealth                  = authoring.MaxHealth,
                     TargetRefreshIntervalTicks = authoring.TargetRefreshIntervalTicks,
-                    SearchRadius               = authoring.SearchRadius,
 
                     RedColor  = new float4(authoring.RedColor.r,  authoring.RedColor.g,  authoring.RedColor.b,  authoring.RedColor.a),
                     BlueColor = new float4(authoring.BlueColor.r, authoring.BlueColor.g, authoring.BlueColor.b, authoring.BlueColor.a),
