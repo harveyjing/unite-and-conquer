@@ -19,7 +19,7 @@ namespace Demo
     [BurstCompile]
     [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
-    [UpdateAfter(typeof(SoldierMovementSystem))]
+    [UpdateAfter(typeof(SoldierSlotFollowSystem))]
     public partial struct MeleeDamageSystem : ISystem
     {
         EntityQuery _attackerQuery;
