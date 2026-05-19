@@ -228,17 +228,57 @@ Squad entities are **not** ghosted. Per-soldier ghost components
 
 ## Testing
 
-- **Smoke test in Unity Editor (manual).** Default config (2 squads per
-  team, 5×10 each = 100 vs 100). Confirm: squads advance as blocks,
-  collide front-to-front, rank-0 soldiers swing, ranks behind hold
-  position, casualties compact every ≈ 0.33 s, winner-banner fires when
-  one team reaches 0.
-- **Scale test.** Bump `SquadsPerTeam` to 4 (400 vs 400). Confirm 30 Hz
-  server tick holds and no GC spikes.
-- **Unity console clean.** `Unity_GetConsoleLogs` reports zero errors
-  after spawn and after first compaction tick.
-- No automated tests are added in this iteration; the existing project
-  has no `.asmdef` test setup yet.
+This iteration also introduces an EditMode test infrastructure that the
+project currently lacks (no `.asmdef` yet, all code in `Assembly-CSharp`).
+Pure math is extracted into a static helper for cheap unit testing; each
+new system gets a focused EditMode test.
+
+**Pure-math helper.** `Demo.SquadGeometry` (static class) owns:
+- `SlotLocalOffset(slot, rows, cols, spacing) → float3`
+- `EngagementDistance(selfRows, targetRows, spacing, attackRange, contactMargin) → float`
+- `RowsForAliveCount(aliveCount, cols) → int`
+
+Burst-compatible pure functions; called from `BattleSpawnSystem`,
+`SoldierSlotFollowSystem`, `SquadMovementSystem`, and
+`SquadCompactionSystem`. Inlined math in those systems is removed.
+
+**Test assemblies.**
+- `Assets/Scripts/Demo/Demo.asmdef` — wraps all production code (first
+  asmdef in the project; expected to require iteration on references).
+- `Assets/Tests/EditMode/Demo.Tests.EditMode.asmdef` — EditMode test
+  assembly, references `Demo` + NUnit + Entities/Mathematics/Transforms/
+  NetCode/Collections.
+- `Assets/Tests/EditMode/EcsTestsBase.cs` — minimal fixture: per-test
+  `World`, helpers for creating Squad/Soldier/BattleConfig/NetworkTime
+  entities. (Avoids the `Unity.Entities.Tests` package dependency.)
+
+**Automated test coverage.**
+- `SquadGeometryTests` — slot offset for known shapes, engagement
+  distance for symmetric and asymmetric pairs, row count for typical
+  and edge alive counts.
+- `SquadTargetingSystemTests` — two enemy squads at different distances
+  → each squad's `SquadTarget` resolves to the nearest enemy.
+- `SquadMovementSystemTests` — squad far from target advances along
+  facing; squad at engagement distance holds position; squad with
+  `Entity.Null` target does not move.
+- `SoldierSlotFollowSystemTests` — soldier moves toward computed slot
+  world position; soldier within one step distance snaps without
+  overshoot.
+- `SquadCompactionSystemTests` — squad with mixed-alive members
+  re-packs its buffer, surviving soldiers get new contiguous
+  `SlotIndex` values, `Rows` updates, fully-wiped squad is destroyed.
+
+**Not automated** (cost > value at this scope):
+- `BattleSpawnSystem` — requires a baked soldier prefab fixture.
+- `MeleeDamageSystem` — scatter/gather correctness is most visible
+  in a live battle; tested manually via smoke.
+
+**Manual smoke test.** Final verification step in `BattleScene`:
+default config (2 squads per team, 5×10 each = 100 vs 100). Confirm
+squads advance, collide front-to-front, rank-0 soldiers swing, ranks
+behind hold position, casualties compact every ≈ 0.33 s, winner banner
+fires. Console clean before, during, after Play. Scale test: bump
+`SquadsPerTeam` to 4 (400 vs 400) and confirm tick rate holds.
 
 ## Risks
 
