@@ -1,6 +1,7 @@
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -9,7 +10,6 @@ using Unity.Transforms;
 
 namespace Demo
 {
-    // Scatter-write per-attacker; gather-apply on victim's Health.
     public struct DamageEvent
     {
         public Entity Victim;
@@ -28,7 +28,7 @@ namespace Demo
         {
             state.RequireForUpdate<BattleConfig>();
             _attackerQuery = SystemAPI.QueryBuilder()
-                .WithAll<Soldier, AttackStats, Target, LocalTransform>()
+                .WithAll<Soldier, AttackStats, SquadMembership, LocalTransform>()
                 .Build();
         }
 
@@ -41,16 +41,18 @@ namespace Demo
 
             var stream = new NativeStream(chunkCount, state.WorldUpdateAllocator);
 
-            var xformLookup = SystemAPI.GetComponentLookup<LocalTransform>(true);
-
             state.Dependency = new WriteDamageJob
             {
-                TargetHandle = SystemAPI.GetComponentTypeHandle<Target>(true),
-                AttackHandle = SystemAPI.GetComponentTypeHandle<AttackStats>(true),
-                XformHandle  = SystemAPI.GetComponentTypeHandle<LocalTransform>(true),
-                XformLookup  = xformLookup,
-                DamageWriter = stream.AsWriter(),
-                Dt           = dt,
+                MembershipHandle = SystemAPI.GetComponentTypeHandle<SquadMembership>(true),
+                AttackHandle     = SystemAPI.GetComponentTypeHandle<AttackStats>(true),
+                XformHandle      = SystemAPI.GetComponentTypeHandle<LocalTransform>(true),
+                SquadLookup      = SystemAPI.GetComponentLookup<Squad>(true),
+                TargetLookup     = SystemAPI.GetComponentLookup<SquadTarget>(true),
+                BufferLookup     = SystemAPI.GetBufferLookup<SquadMember>(true),
+                XformLookup      = SystemAPI.GetComponentLookup<LocalTransform>(true),
+                HealthLookup     = SystemAPI.GetComponentLookup<Health>(true),
+                DamageWriter     = stream.AsWriter(),
+                Dt               = dt,
             }.ScheduleParallel(_attackerQuery, state.Dependency);
 
             state.Dependency = new ReduceDamageJob
@@ -64,10 +66,14 @@ namespace Demo
     [BurstCompile]
     struct WriteDamageJob : IJobChunk
     {
-        [ReadOnly] public ComponentTypeHandle<Target> TargetHandle;
-        [ReadOnly] public ComponentTypeHandle<AttackStats> AttackHandle;
-        [ReadOnly] public ComponentTypeHandle<LocalTransform> XformHandle;
-        [ReadOnly] public ComponentLookup<LocalTransform> XformLookup;
+        [ReadOnly] public ComponentTypeHandle<SquadMembership> MembershipHandle;
+        [ReadOnly] public ComponentTypeHandle<AttackStats>     AttackHandle;
+        [ReadOnly] public ComponentTypeHandle<LocalTransform>  XformHandle;
+        [ReadOnly] public ComponentLookup<Squad>               SquadLookup;
+        [ReadOnly] public ComponentLookup<SquadTarget>         TargetLookup;
+        [ReadOnly] public BufferLookup<SquadMember>            BufferLookup;
+        [ReadOnly] public ComponentLookup<LocalTransform>      XformLookup;
+        [ReadOnly] public ComponentLookup<Health>              HealthLookup;
         public NativeStream.Writer DamageWriter;
         public float Dt;
 
@@ -76,23 +82,42 @@ namespace Demo
         {
             DamageWriter.BeginForEachIndex(unfilteredChunkIndex);
 
-            var targets = chunk.GetNativeArray(ref TargetHandle);
-            var attacks = chunk.GetNativeArray(ref AttackHandle);
-            var xforms  = chunk.GetNativeArray(ref XformHandle);
+            var memberships = chunk.GetNativeArray(ref MembershipHandle);
+            var attacks     = chunk.GetNativeArray(ref AttackHandle);
+            var xforms      = chunk.GetNativeArray(ref XformHandle);
 
             for (int i = 0; i < chunk.Count; i++)
             {
-                var t = targets[i].Value;
-                if (t == Entity.Null) continue;
-                if (!XformLookup.HasComponent(t)) continue;
+                var m = memberships[i];
+                if (m.Squad == Entity.Null) continue;
+                if (!SquadLookup.HasComponent(m.Squad)) continue;
 
-                float distSq = math.distancesq(xforms[i].Position, XformLookup[t].Position);
+                var selfSquad = SquadLookup[m.Squad];
+                if (m.SlotIndex < 0 || m.SlotIndex >= selfSquad.Cols) continue;
+
+                var targetSquadEntity = TargetLookup[m.Squad].Value;
+                if (targetSquadEntity == Entity.Null) continue;
+                if (!BufferLookup.HasBuffer(targetSquadEntity)) continue;
+                if (!SquadLookup.HasComponent(targetSquadEntity)) continue;
+
+                var enemyBuf   = BufferLookup[targetSquadEntity];
+                var enemySquad = SquadLookup[targetSquadEntity];
+                int pairCol    = m.SlotIndex % enemySquad.Cols;
+                if (pairCol >= enemyBuf.Length) continue;
+
+                Entity enemy = enemyBuf[pairCol].Value;
+                if (enemy == Entity.Null) continue;
+                if (!HealthLookup.HasComponent(enemy)) continue;
+                if (HealthLookup[enemy].Current <= 0f) continue;
+                if (!XformLookup.HasComponent(enemy)) continue;
+
+                float distSq = math.distancesq(xforms[i].Position, XformLookup[enemy].Position);
                 float range  = attacks[i].Range;
                 if (distSq <= range * range)
                 {
                     DamageWriter.Write(new DamageEvent
                     {
-                        Victim = t,
+                        Victim = enemy,
                         Amount = attacks[i].Dps * Dt,
                     });
                 }
@@ -102,10 +127,6 @@ namespace Demo
         }
     }
 
-    // Single-threaded reduce: read every event, decrement victim Health.
-    // [NativeDisableParallelForRestriction] tells the safety system that
-    // we will scatter-write to ComponentLookup<Health> from one thread;
-    // since the job is IJob (not parallel), this is safe.
     [BurstCompile]
     struct ReduceDamageJob : IJob
     {
