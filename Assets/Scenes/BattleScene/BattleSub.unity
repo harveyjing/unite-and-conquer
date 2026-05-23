@@ -157,8 +157,8 @@ MonoBehaviour:
   SquadRotationSpeed: 2
   ContactMargin: 0.1
   CompactionIntervalTicks: 10
-  RedCenter: {x: -90, y: 0, z: 0}
-  BlueCenter: {x: 90, y: 0, z: 0}
+  RedCenter: {x: -20, y: 0, z: 0}
+  BlueCenter: {x: 20, y: 0, z: 0}
   SoldierStepSpeed: 2
   AttackRange: 0.8
   Dps: 25
