@@ -34,8 +34,11 @@ Modify `Demo.Health` in [SoldierAuthoring.cs](Assets/Scripts/Demo/Battle/Authori
 
 - Change `[GhostComponent(PrefabType = GhostPrefabType.Server)]` to
   `[GhostComponent(PrefabType = GhostPrefabType.All)]`.
-- Add `[GhostField]` to `Current` and `Max`. `Max` is constant after spawn, so
-  Netcode delta compression sends it once; `Current` is sent only on change.
+- Add `[GhostField]` to `Current` only. `Max` stays a plain field — it's
+  constant after spawn and shared by every soldier, so the client doesn't need
+  it replicated; `HealthBarUpdateSystem` reads `BattleConfig.MaxHealth`
+  instead. (When unit classes ship with diverging per-class max HP, revisit
+  and add `[GhostField]` to `Max`.)
 
 Add new components (in a new file `Assets/Scripts/Demo/Battle/Authoring/HealthBarComponents.cs`):
 
@@ -105,10 +108,11 @@ Both new systems live in `Assets/Scripts/Demo/Battle/System/`, run in
 ### `HealthBarUpdateSystem`
 
 - `[UpdateAfter(typeof(HealthBarSpawnSystem))]`.
+- Reads `BattleConfig` singleton in `OnUpdate`, captures `MaxHealth` once.
 - Burst `IJobEntity` over soldiers with `HealthBarRef` + `Health`.
 - For each soldier, look up the bar via
   `ComponentLookup<HealthBarFill>` (with `update = true`) and write
-  `Value = math.saturate(Max > 0 ? Current / Max : 0)`.
+  `Value = math.saturate(MaxHealth > 0 ? Current / MaxHealth : 0)`.
 - No structural changes; parallel-safe (each soldier writes to a distinct bar).
 
 ### Cleanup
@@ -122,11 +126,12 @@ client) the bar is destroyed in the same step.
 EditMode tests in `Assets/Tests/EditMode/` (existing assembly pattern):
 
 - **`HealthBarUpdateSystemTests`**
-  - Soldier with `Health { Current = 25, Max = 50 }` and `HealthBarRef`
-    pointing at a bar entity with `HealthBarFill { Value = 1 }`. Tick the
-    system once. Assert `HealthBarFill.Value == 0.5f`.
-  - Edge: `Max == 0` → fill becomes 0 (no NaN).
-  - Edge: `Current > Max` → fill clamped to 1.
+  - Soldier with `Health { Current = 25, Max = 50 }`, a `BattleConfig`
+    singleton with `MaxHealth = 50`, and `HealthBarRef` pointing at a bar
+    entity with `HealthBarFill { Value = 1 }`. Tick the system once. Assert
+    `HealthBarFill.Value == 0.5f`.
+  - Edge: `BattleConfig.MaxHealth == 0` → fill becomes 0 (no NaN).
+  - Edge: `Current > MaxHealth` → fill clamped to 1.
 
 - **`HealthBarSpawnSystemTests`**
   - Soldier with no `HealthBarRef`. Stand in a hand-built "prefab" entity
