@@ -10,7 +10,7 @@ namespace Demo
     // saturate(Health.Current / BattleConfig.MaxHealth) into the linked
     // HealthBarFill so the shader's _Health01 stays in sync with HP.
     [UpdateInGroup(typeof(PresentationSystemGroup))]
-    // [UpdateAfter(typeof(HealthBarSpawnSystem))]  // re-enable in Task 8
+    [UpdateAfter(typeof(HealthBarSpawnSystem))]
     [WorldSystemFilter(WorldSystemFilterFlags.ClientSimulation)]
     public partial struct HealthBarUpdateSystem : ISystem
     {
