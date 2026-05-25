@@ -25,8 +25,7 @@
 ## File map
 
 **Create**
-- `Assets/Scripts/Demo/Battle/Authoring/HealthBarComponents.cs` — `HealthBarRef`, `HealthBarLink`, `HealthBarFill`
-- `Assets/Scripts/Demo/Battle/Authoring/HealthBarAuthoring.cs` — MonoBehaviour + `Baker`
+- `Assets/Scripts/Demo/Battle/Authoring/HealthBarAuthoring.cs` — `HealthBarRef`, `HealthBarLink`, `HealthBarFill` components + `HealthBarAuthoring` MonoBehaviour and its `Baker` (follows the same one-file-per-prefab pattern as `SoldierAuthoring.cs`)
 - `Assets/Scripts/Demo/Battle/System/HealthBarSpawnSystem.cs`
 - `Assets/Scripts/Demo/Battle/System/HealthBarUpdateSystem.cs`
 - `Assets/Shaders/HealthBar.shader`
@@ -150,16 +149,19 @@ git commit -m "feat(battle): replicate Health.Current to clients via GhostField"
 
 ---
 
-## Task 3: Create `HealthBarComponents.cs`
+## Task 3: Create `HealthBarAuthoring.cs` (components + Baker)
 
 **Files:**
-- Create: `Assets/Scripts/Demo/Battle/Authoring/HealthBarComponents.cs`
+- Create: `Assets/Scripts/Demo/Battle/Authoring/HealthBarAuthoring.cs`
+
+Follows the same one-file-per-prefab pattern as `SoldierAuthoring.cs`: component definitions live in the same file as the MonoBehaviour + Baker that uses them. The Baker stays in this task so the file is complete and the Soldier-side tests in Tasks 5 and 7 can compile.
 
 - [ ] **Step 1: Write the file**
 
 ```csharp
 using Unity.Entities;
 using Unity.Rendering;
+using UnityEngine;
 
 namespace Demo
 {
@@ -184,6 +186,22 @@ namespace Demo
     {
         public float Value;
     }
+
+    // Authoring MonoBehaviour for the HealthBar prefab. Its baker attaches
+    // a HealthBarFill component initialized to full so the shader's
+    // _Health01 starts at 1.0 before HealthBarUpdateSystem first ticks.
+    [DisallowMultipleComponent]
+    public class HealthBarAuthoring : MonoBehaviour
+    {
+        class Baker : Baker<HealthBarAuthoring>
+        {
+            public override void Bake(HealthBarAuthoring authoring)
+            {
+                var entity = GetEntity(TransformUsageFlags.Dynamic);
+                AddComponent(entity, new HealthBarFill { Value = 1f });
+            }
+        }
+    }
 }
 ```
 
@@ -194,8 +212,8 @@ Unity MCP `Unity_GetConsoleLogs`: zero errors.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add Assets/Scripts/Demo/Battle/Authoring/HealthBarComponents.cs Assets/Scripts/Demo/Battle/Authoring/HealthBarComponents.cs.meta
-git commit -m "feat(battle): add HealthBarRef/Link/Fill components"
+git add Assets/Scripts/Demo/Battle/Authoring/HealthBarAuthoring.cs Assets/Scripts/Demo/Battle/Authoring/HealthBarAuthoring.cs.meta
+git commit -m "feat(battle): add HealthBar components + authoring/baker"
 ```
 
 ---
@@ -843,43 +861,14 @@ git commit -m "feat(battle): add HealthBar material"
 
 ---
 
-## Task 11: Create the `HealthBarAuthoring` MonoBehaviour and prefab
+## Task 11: Create the `HealthBar` prefab
 
 **Files:**
-- Create: `Assets/Scripts/Demo/Battle/Authoring/HealthBarAuthoring.cs`
 - Create: `Assets/Prefabs/HealthBar.prefab`
 
-- [ ] **Step 1: Write the authoring component**
+The `HealthBarAuthoring` MonoBehaviour was created in Task 3; this task only builds the prefab asset in the Editor.
 
-```csharp
-using Unity.Entities;
-using UnityEngine;
-
-namespace Demo
-{
-    // Authoring MonoBehaviour for the HealthBar prefab. Its baker attaches
-    // a HealthBarFill component initialized to full so the shader's
-    // _Health01 starts at 1.0 before HealthBarUpdateSystem first ticks.
-    [DisallowMultipleComponent]
-    public class HealthBarAuthoring : MonoBehaviour
-    {
-        class Baker : Baker<HealthBarAuthoring>
-        {
-            public override void Bake(HealthBarAuthoring authoring)
-            {
-                var entity = GetEntity(TransformUsageFlags.Dynamic);
-                AddComponent(entity, new HealthBarFill { Value = 1f });
-            }
-        }
-    }
-}
-```
-
-- [ ] **Step 2: Compile check**
-
-Unity MCP `Unity_GetConsoleLogs`: zero errors.
-
-- [ ] **Step 3: Create the prefab in the Editor**
+- [ ] **Step 1: Create the prefab in the Editor**
 
 In the Unity Editor scene hierarchy (any open scene works for authoring):
 1. Right-click in Hierarchy → **3D Object → Quad**. Rename it `HealthBar`.
@@ -889,15 +878,15 @@ In the Unity Editor scene hierarchy (any open scene works for authoring):
 5. Drag the `HealthBar` GameObject from the Hierarchy into `Assets/Prefabs/` to create `Assets/Prefabs/HealthBar.prefab`.
 6. Delete the `HealthBar` from the Hierarchy (the prefab is what we want, not a scene instance).
 
-- [ ] **Step 4: Compile check**
+- [ ] **Step 2: Compile check**
 
 Unity MCP `Unity_GetConsoleLogs`: zero errors. (A baking warning about the prefab is fine until Task 12.)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add Assets/Scripts/Demo/Battle/Authoring/HealthBarAuthoring.cs Assets/Scripts/Demo/Battle/Authoring/HealthBarAuthoring.cs.meta Assets/Prefabs/HealthBar.prefab Assets/Prefabs/HealthBar.prefab.meta
-git commit -m "feat(battle): add HealthBarAuthoring and HealthBar prefab"
+git add Assets/Prefabs/HealthBar.prefab Assets/Prefabs/HealthBar.prefab.meta
+git commit -m "feat(battle): add HealthBar prefab"
 ```
 
 ---
