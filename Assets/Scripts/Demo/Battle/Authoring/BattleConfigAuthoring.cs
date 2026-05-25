@@ -40,6 +40,10 @@ namespace Demo
         // Visuals.
         public float4 RedColor;
         public float4 BlueColor;
+
+        // Health bar.
+        public Entity HealthBarPrefab;
+        public float  HealthBarHeightOffset;
     }
 
     public class BattleConfigAuthoring : MonoBehaviour
@@ -75,6 +79,11 @@ namespace Demo
         [Header("Team colors (RGBA, linear)")]
         public Color RedColor  = new Color(1f, 0.1f, 0.1f, 1f);
         public Color BlueColor = new Color(0.1f, 0.4f, 1f, 1f);
+
+        [Header("Health bar")]
+        [Tooltip("HealthBar prefab — see Assets/Prefabs/HealthBar.prefab (created in Task 8).")]
+        public GameObject HealthBarPrefab;
+        public float      HealthBarHeightOffset = 1.2f;
 
         class Baker : Baker<BattleConfigAuthoring>
         {
@@ -112,6 +121,11 @@ namespace Demo
 
                     RedColor  = new float4(authoring.RedColor.r,  authoring.RedColor.g,  authoring.RedColor.b,  authoring.RedColor.a),
                     BlueColor = new float4(authoring.BlueColor.r, authoring.BlueColor.g, authoring.BlueColor.b, authoring.BlueColor.a),
+
+                    HealthBarPrefab = authoring.HealthBarPrefab != null
+                        ? GetEntity(authoring.HealthBarPrefab, TransformUsageFlags.Dynamic)
+                        : Entity.Null,
+                    HealthBarHeightOffset = authoring.HealthBarHeightOffset,
                 });
             }
         }
