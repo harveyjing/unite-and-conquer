@@ -99,7 +99,7 @@ Runtime data binding in Unity 6000.4.1f1:
 
 ## Unity Editor operations via MCP
 
-**All Unity Editor interactions must go through Unity MCP (`mcp__unity-mcp__*`) — never the `unity-editor` CLI.**
+**All Editor interactions are performed via Unity MCP (`mcp__unity-mcp__*`) — never the `unity-editor` CLI, no manual clicks in the Inspector, no menu navigation, no manual validation.**
 
 After every code change or Editor command, call `Unity_GetConsoleLogs` and confirm zero errors before reporting done. For visual changes, capture the scene view via MCP to confirm the result.
 
