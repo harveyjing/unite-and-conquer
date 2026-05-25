@@ -26,6 +26,9 @@ Shader "Demo/HealthBar"
             #pragma vertex   vert
             #pragma fragment frag
 
+            // DOTS_INSTANCING_ON requires SM 4.5+.
+            #pragma target 4.5
+
             #pragma multi_compile_instancing
             #pragma multi_compile _ DOTS_INSTANCING_ON
 
