@@ -32,11 +32,12 @@ namespace Demo
         [GhostField] public float4 Value;
     }
 
-    // Server-only.
-    [GhostComponent(PrefabType = GhostPrefabType.Server)]
+    // Replicated to clients: Current is per-tick, Max stays server-side
+    // (clients read BattleConfig.MaxHealth instead — see design doc).
+    [GhostComponent(PrefabType = GhostPrefabType.All)]
     public struct Health : IComponentData
     {
-        public float Current;
+        [GhostField] public float Current;
         public float Max;
     }
 
