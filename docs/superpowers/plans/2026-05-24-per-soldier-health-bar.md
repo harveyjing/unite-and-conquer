@@ -16,9 +16,87 @@
 
 - All new C# code lives under `Assets/Scripts/Demo/Battle/` in the `Demo` namespace.
 - Tests live under `Assets/Tests/EditMode/` in the `Demo.Tests` namespace; they extend `EcsTestsBase` and use `CreateAndUpdateSystem<T>` to tick one frame.
-- After every Unity-touching task, the engineer calls Unity MCP `Unity_GetConsoleLogs` and expects `"success": true` with zero compiler errors before moving on.
-- "Run the tests" means: in Unity Editor, **Window → General → Test Runner → EditMode → Run All** (or the targeted class). Tests pass = green checkmarks, no red.
+- **All Editor interactions are performed via Unity MCP** — no manual clicks in the Inspector, no menu navigation. The two MCP tools used:
+  - `Unity_GetConsoleLogs` to read the Editor console.
+  - `Unity_RunCommand` to execute a C# script inside the Editor process (compiles + runs synchronously, returns logs in the response).
+- After every Unity-touching task, call `Unity_GetConsoleLogs` and expect `"success": true` with zero compile errors before moving on.
 - Commits use Conventional Commits (the repo's existing style: `feat(battle):`, `fix(battle):`, etc.).
+
+---
+
+## Reusable MCP snippets
+
+Several tasks reuse these. When a task says "run the test snippet with filter X" or "run the material-create snippet", paste the snippet below into `Unity_RunCommand`'s `Code` parameter, replacing the placeholder.
+
+### Snippet A — Run EditMode tests (optionally filtered)
+
+Replace `FILTER_CATEGORY` with either an empty `Filter { testMode = TestMode.EditMode }` (run all) or one scoped to a class name via `groupNames = new[] { "^Demo\\.Tests\\.XxxTests$" }` (run one class).
+
+```csharp
+using UnityEngine;
+using UnityEditor;
+using UnityEditor.TestTools.TestRunner.Api;
+
+internal class CommandScript : IRunCommand
+{
+    public void Execute(ExecutionResult result)
+    {
+        var api = ScriptableObject.CreateInstance<TestRunnerApi>();
+        var cb  = new TestCallbacks();
+        api.RegisterCallbacks(cb);
+        var filter = new Filter
+        {
+            testMode   = TestMode.EditMode,
+            // groupNames = new[] { "^Demo\\.Tests\\.HealthBarUpdateSystemTests$" },
+        };
+        var settings = new ExecutionSettings(filter) { runSynchronously = true };
+        api.Execute(settings);
+        api.UnregisterCallbacks(cb);
+        result.Log($"DONE passed={cb.Passed} failed={cb.Failed} skipped={cb.Skipped}{cb.Failures}");
+    }
+}
+
+internal class TestCallbacks : ICallbacks
+{
+    public int Passed, Failed, Skipped;
+    public string Failures = "";
+    public void RunStarted(ITestAdaptor t) {}
+    public void RunFinished(ITestResultAdaptor r)
+    {
+        Passed = r.PassCount; Failed = r.FailCount; Skipped = r.SkipCount;
+        Collect(r);
+    }
+    void Collect(ITestResultAdaptor r)
+    {
+        if (r.HasChildren) { foreach (var c in r.Children) Collect(c); }
+        else if (r.TestStatus != TestStatus.Passed)
+            Failures += $"\n  {r.Test.FullName} :: {r.TestStatus} :: {r.Message}";
+    }
+    public void TestStarted(ITestAdaptor t) {}
+    public void TestFinished(ITestResultAdaptor r) {}
+}
+```
+
+A successful run returns something like `[Log] DONE passed=18 failed=0 skipped=0`. Failures append a per-test line listing the failure message.
+
+### Snippet B — Force domain reload
+
+Use after writing/changing C# source if Unity hasn't auto-recompiled yet:
+
+```csharp
+using UnityEditor;
+using UnityEditor.Compilation;
+using UnityEngine;
+internal class CommandScript : IRunCommand
+{
+    public void Execute(ExecutionResult result)
+    {
+        AssetDatabase.Refresh();
+        CompilationPipeline.RequestScriptCompilation();
+        result.Log("Refresh + RequestScriptCompilation triggered");
+    }
+}
+```
 
 ---
 
@@ -38,7 +116,7 @@
 - `Assets/Scripts/Demo/Battle/Authoring/SoldierAuthoring.cs` — `Health` becomes `GhostPrefabType.All` with `[GhostField]` on `Current`.
 - `Assets/Scripts/Demo/Battle/Authoring/BattleConfigAuthoring.cs` — add `HealthBarPrefab` (GameObject + baked Entity) and `HealthBarHeightOffset`.
 - `Assets/Tests/EditMode/EcsTestsBase.cs` — extend `CreateBattleConfig` to accept `healthBarPrefab` + `healthBarHeightOffset`; add `CreateHealthBarStub` helper.
-- `Assets/Scenes/BattleSub.unity` — assign the `HealthBar` prefab to `BattleConfigAuthoring.HealthBarPrefab` (done in Editor).
+- `Assets/Scenes/BattleSub.unity` — assign the `HealthBar` prefab to `BattleConfigAuthoring.HealthBarPrefab` (done via MCP script in Task 12).
 
 ---
 
@@ -134,11 +212,9 @@ Replace with:
 
 Unity MCP `Unity_GetConsoleLogs`: zero errors. Netcode's source generator runs on Health's serializer; expect a brief recompile.
 
-- [ ] **Step 3: Sanity-tick BattleScene**
+- [ ] **Step 3: Verify pre-existing tests still pass**
 
-In Unity Editor, open `Assets/Scenes/BattleScene.unity` and enter Play mode for ~5 seconds. Confirm:
-1. `Unity_GetConsoleLogs` after exiting Play: zero errors.
-2. Soldiers still spawn, target each other, and take damage (server-side behavior unchanged).
+Run Snippet A (no filter — all EditMode tests). Expected log line: `DONE passed=18 failed=0 skipped=0`. If the pass count changes, investigate before continuing.
 
 - [ ] **Step 4: Commit**
 
@@ -369,10 +445,9 @@ namespace Demo.Tests
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-In Unity: **Window → General → Test Runner → EditMode → Run All** (or just this class).
-Expected: 3 RED failures — `HealthBarUpdateSystem` does not yet exist (compile error in the test file or missing type reference). This is the expected failing-test state.
+Call `Unity_GetConsoleLogs` first. If the console shows compile errors mentioning `HealthBarUpdateSystem` (type or namespace not found), that's the expected failing state — the test file references a system that doesn't exist yet. Proceed to commit.
 
-If instead all tests are skipped or no errors surface, Unity didn't recompile — re-focus the Editor to trigger a refresh, then run again.
+If Unity hasn't recompiled yet, run Snippet B (force domain reload), then call `Unity_GetConsoleLogs` again. Confirm the compile errors are present.
 
 - [ ] **Step 3: Commit**
 
@@ -451,10 +526,13 @@ namespace Demo
 
 - [ ] **Step 2: Run tests to verify they pass**
 
-Test Runner → Run the `HealthBarUpdateSystemTests` class.
-Expected: 3 GREEN.
+Run Snippet A with the filter scoped to this class:
+```
+groupNames = new[] { "^Demo\\.Tests\\.HealthBarUpdateSystemTests$" },
+```
+Expected log: `DONE passed=3 failed=0 skipped=0`.
 
-If a test fails: read the assertion message. Most likely cause is the `IJobEntity` source-generator not running (Unity may need an Editor refocus). Trigger a recompile by saving any C# file.
+If the call fails or `failed > 0`: read the appended failure lines. The most common cause is the `IJobEntity` source-generator not having run yet — execute Snippet B (force compilation) and retry Snippet A.
 
 - [ ] **Step 3: Compile check + console**
 
@@ -570,8 +648,7 @@ namespace Demo.Tests
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Test Runner → Run `HealthBarSpawnSystemTests`.
-Expected: 3 RED (system type does not exist yet → compile or resolution error).
+Call `Unity_GetConsoleLogs`. Expected: compile errors mentioning `HealthBarSpawnSystem` (system type does not exist yet). If no errors yet, run Snippet B then re-check.
 
 - [ ] **Step 3: Commit**
 
@@ -672,8 +749,8 @@ with:
 
 - [ ] **Step 3: Run all EditMode tests**
 
-Test Runner → Run All.
-Expected: all 6 health-bar tests GREEN, plus all pre-existing tests (`SquadGeometryTests`, `SquadCompactionSystemTests`, etc.) still GREEN.
+Run Snippet A with no filter (all EditMode tests).
+Expected log: `DONE passed=24 failed=0 skipped=0` (18 pre-existing + 6 new health-bar tests).
 
 If a pre-existing test fails because `BattleConfig` no longer has expected defaults: re-check Task 4 Step 2 — the new fields should default to `Entity.Null` / `1.2f` and not overwrite anything.
 
@@ -826,61 +903,114 @@ git commit -m "feat(battle): add Demo/HealthBar URP shader (billboard + gradient
 
 ---
 
-## Task 10: Create the `HealthBar` material
+## Task 10: Create the `HealthBar` material via MCP
 
 **Files:**
 - Create: `Assets/Materials/HealthBar.mat`
 
-This task is done in the Unity Editor — there is no automated way to author a `.mat`. The engineer performs these manual steps.
+- [ ] **Step 1: Run the material-create script**
 
-- [ ] **Step 1: Create the directory if needed**
+Call `Unity_RunCommand` with this code:
 
-```bash
-mkdir -p Assets/Materials
+```csharp
+using UnityEngine;
+using UnityEditor;
+
+internal class CommandScript : IRunCommand
+{
+    public void Execute(ExecutionResult result)
+    {
+        var shader = Shader.Find("Demo/HealthBar");
+        if (shader == null) { result.LogError("Shader 'Demo/HealthBar' not found"); return; }
+
+        if (!AssetDatabase.IsValidFolder("Assets/Materials"))
+            AssetDatabase.CreateFolder("Assets", "Materials");
+
+        var mat = new Material(shader) { name = "HealthBar", enableInstancing = true };
+        const string path = "Assets/Materials/HealthBar.mat";
+        AssetDatabase.CreateAsset(mat, path);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+        result.RegisterObjectCreation(mat);
+        result.Log("Created " + path + " with shader Demo/HealthBar");
+    }
+}
 ```
 
-- [ ] **Step 2: Create the material in the Editor**
+Expected log: `Created Assets/Materials/HealthBar.mat with shader Demo/HealthBar`. If the shader can't be found, Task 9 hasn't compiled — call Snippet B and retry.
 
-In Unity Project window:
-1. Right-click on `Assets/Materials/` → **Create → Material**.
-2. Name it `HealthBar`.
-3. In the Inspector, click the **Shader** dropdown and select `Demo/HealthBar`.
-4. Verify the `Health (0..1)` slider appears and defaults to `1`.
-5. Tick **Enable GPU Instancing** if visible (URP unlit usually exposes it).
+- [ ] **Step 2: Compile check**
 
-- [ ] **Step 3: Compile check**
+`Unity_GetConsoleLogs`: zero errors.
 
-Unity MCP `Unity_GetConsoleLogs`: zero errors.
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add Assets/Materials/HealthBar.mat Assets/Materials/HealthBar.mat.meta Assets/Materials/.meta 2>/dev/null
+git add Assets/Materials
 git commit -m "feat(battle): add HealthBar material"
 ```
 
 ---
 
-## Task 11: Create the `HealthBar` prefab
+## Task 11: Build the `HealthBar` prefab via MCP
 
 **Files:**
 - Create: `Assets/Prefabs/HealthBar.prefab`
 
-The `HealthBarAuthoring` MonoBehaviour was created in Task 3; this task only builds the prefab asset in the Editor.
+The `HealthBarAuthoring` MonoBehaviour was created in Task 3; this task assembles the prefab asset.
 
-- [ ] **Step 1: Create the prefab in the Editor**
+- [ ] **Step 1: Run the prefab-create script**
 
-In the Unity Editor scene hierarchy (any open scene works for authoring):
-1. Right-click in Hierarchy → **3D Object → Quad**. Rename it `HealthBar`.
-2. In the Inspector, click **Add Component** → search **HealthBarAuthoring** → add.
-3. On the **Mesh Renderer**, drag `Assets/Materials/HealthBar` into the **Materials → Element 0** slot.
-4. On the **Mesh Renderer**, disable **Cast Shadows** (set to Off), **Receive Shadows**, **Contribute Global Illumination**. Leave Light Probes/Reflection Probes at Off.
-5. Drag the `HealthBar` GameObject from the Hierarchy into `Assets/Prefabs/` to create `Assets/Prefabs/HealthBar.prefab`.
-6. Delete the `HealthBar` from the Hierarchy (the prefab is what we want, not a scene instance).
+Call `Unity_RunCommand` with:
+
+```csharp
+using System;
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEditor;
+
+internal class CommandScript : IRunCommand
+{
+    public void Execute(ExecutionResult result)
+    {
+        var mat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/HealthBar.mat");
+        if (mat == null) { result.LogError("Assets/Materials/HealthBar.mat not found"); return; }
+
+        var authoringType = Type.GetType("Demo.HealthBarAuthoring, Assembly-CSharp");
+        if (authoringType == null) { result.LogError("Demo.HealthBarAuthoring not found"); return; }
+
+        var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        go.name = "HealthBar";
+        var col = go.GetComponent<Collider>();
+        if (col != null) UnityEngine.Object.DestroyImmediate(col);
+
+        go.AddComponent(authoringType);
+
+        var renderer = go.GetComponent<MeshRenderer>();
+        renderer.sharedMaterial         = mat;
+        renderer.shadowCastingMode      = ShadowCastingMode.Off;
+        renderer.receiveShadows         = false;
+        renderer.lightProbeUsage        = LightProbeUsage.Off;
+        renderer.reflectionProbeUsage   = ReflectionProbeUsage.Off;
+
+        if (!AssetDatabase.IsValidFolder("Assets/Prefabs"))
+            AssetDatabase.CreateFolder("Assets", "Prefabs");
+
+        const string path = "Assets/Prefabs/HealthBar.prefab";
+        var prefab = PrefabUtility.SaveAsPrefabAsset(go, path);
+        UnityEngine.Object.DestroyImmediate(go);
+        AssetDatabase.SaveAssets();
+        result.RegisterObjectCreation(prefab);
+        result.Log("Created prefab at " + path);
+    }
+}
+```
+
+Expected log: `Created prefab at Assets/Prefabs/HealthBar.prefab`. If `Demo.HealthBarAuthoring` is reported missing, the Demo assembly hasn't compiled yet — run Snippet B and retry.
 
 - [ ] **Step 2: Compile check**
 
-Unity MCP `Unity_GetConsoleLogs`: zero errors. (A baking warning about the prefab is fine until Task 12.)
+`Unity_GetConsoleLogs`: zero errors.
 
 - [ ] **Step 3: Commit**
 
@@ -891,28 +1021,72 @@ git commit -m "feat(battle): add HealthBar prefab"
 
 ---
 
-## Task 12: Wire the prefab into `BattleSub.unity`
+## Task 12: Wire the prefab into `BattleSub.unity` via MCP
 
 **Files:**
-- Modify: `Assets/Scenes/BattleSub.unity` (via Editor)
+- Modify: `Assets/Scenes/BattleSub.unity`
 
-- [ ] **Step 1: Open the BattleSub subscene**
+- [ ] **Step 1: Run the scene-wiring script**
 
-In Unity: open `Assets/Scenes/BattleScene.unity`, then in Hierarchy open the **BattleSub** subscene (double-click).
+Call `Unity_RunCommand` with:
 
-- [ ] **Step 2: Assign the prefab**
+```csharp
+using System;
+using UnityEngine;
+using UnityEditor;
+using UnityEditor.SceneManagement;
 
-1. In Hierarchy, select the GameObject carrying `BattleConfigAuthoring` (the one with the existing `Soldier Prefab` reference).
-2. In the Inspector, find the new **Health Bar** section.
-3. Drag `Assets/Prefabs/HealthBar.prefab` into the **Health Bar Prefab** slot.
-4. Leave **Health Bar Height Offset** at `1.2` (or tune).
-5. Save the scene (Cmd+S / Ctrl+S).
+internal class CommandScript : IRunCommand
+{
+    public void Execute(ExecutionResult result)
+    {
+        const string scenePath  = "Assets/Scenes/BattleSub.unity";
+        const string prefabPath = "Assets/Prefabs/HealthBar.prefab";
 
-- [ ] **Step 3: Compile + console check**
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+        if (prefab == null) { result.LogError(prefabPath + " not found"); return; }
 
-Unity MCP `Unity_GetConsoleLogs`: zero errors.
+        var authoringType = Type.GetType("Demo.BattleConfigAuthoring, Assembly-CSharp");
+        if (authoringType == null) { result.LogError("Demo.BattleConfigAuthoring not found"); return; }
 
-- [ ] **Step 4: Commit**
+        var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+        try
+        {
+            Component target = null;
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                target = root.GetComponentInChildren(authoringType, includeInactive: true);
+                if (target != null) break;
+            }
+            if (target == null) { result.LogError("BattleConfigAuthoring not in BattleSub"); return; }
+
+            var so = new SerializedObject(target);
+            var prop = so.FindProperty("HealthBarPrefab");
+            if (prop == null) { result.LogError("HealthBarPrefab field not found on BattleConfigAuthoring"); return; }
+            prop.objectReferenceValue = prefab;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            if (!EditorSceneManager.SaveScene(scene))
+            { result.LogError("Failed to save " + scenePath); return; }
+
+            result.Log("Wired HealthBar.prefab into BattleConfigAuthoring on " + target.gameObject.name);
+        }
+        finally
+        {
+            EditorSceneManager.CloseScene(scene, removeScene: true);
+        }
+    }
+}
+```
+
+Expected log: `Wired HealthBar.prefab into BattleConfigAuthoring on <go-name>`.
+
+- [ ] **Step 2: Compile + console check**
+
+`Unity_GetConsoleLogs`: zero errors.
+
+- [ ] **Step 3: Commit**
 
 ```bash
 git add Assets/Scenes/BattleSub.unity
@@ -925,30 +1099,126 @@ git commit -m "feat(battle): wire HealthBar prefab into BattleSub"
 
 **Files:** none — validation only.
 
-- [ ] **Step 1: Enter Play mode in BattleScene**
+Play-mode validation happens across three MCP calls because entering Play mode is asynchronous: the first call schedules entry + the engagement window + capture + exit. Snapshots land in `Assets/Captures/`.
 
-In Unity: open `Assets/Scenes/BattleScene.unity`, press Play. Let it run for ~10 seconds while soldiers spawn and engage.
+- [ ] **Step 1: Run the play+capture+exit script**
 
-- [ ] **Step 2: Capture the scene**
+Call `Unity_RunCommand` with:
 
-Unity MCP `Unity_SceneView_Capture2DScene` (or `Unity_Camera_Capture` on the main game camera).
-Expected: green bars visible above every soldier, billboarded to the camera, oriented horizontally regardless of camera pan/zoom.
+```csharp
+using System.IO;
+using UnityEngine;
+using UnityEditor;
+using UnityEditor.SceneManagement;
 
-- [ ] **Step 3: Confirm color shift under combat**
+internal class CommandScript : IRunCommand
+{
+    static int _frame;
+    static int _capturesTaken;
 
-After ~5 seconds of combat, capture again. Expected: bars on damaged soldiers have shortened and shifted yellow/orange/red.
+    public void Execute(ExecutionResult result)
+    {
+        const string scenePath = "Assets/Scenes/BattleScene.unity";
+
+        // Open the scene if it's not already the active one.
+        if (EditorSceneManager.GetActiveScene().path != scenePath)
+            EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+
+        if (!Directory.Exists("Assets/Captures"))
+            Directory.CreateDirectory("Assets/Captures");
+
+        _frame = 0;
+        _capturesTaken = 0;
+        EditorApplication.update += Tick;
+        EditorApplication.EnterPlaymode();
+        result.Log("Scheduled Play+capture+exit. Watch console for capture confirmations.");
+    }
+
+    static void Tick()
+    {
+        if (!EditorApplication.isPlaying && _frame < 30) { _frame++; return; }
+        _frame++;
+
+        // ~2s after entering play: first capture (bars should be full green).
+        if (_capturesTaken == 0 && _frame > 120)
+        {
+            Capture("healthbar_t0_full.png");
+            _capturesTaken = 1;
+        }
+        // ~6s after entering play: second capture (mid-combat).
+        else if (_capturesTaken == 1 && _frame > 360)
+        {
+            Capture("healthbar_t1_combat.png");
+            _capturesTaken = 2;
+        }
+        // ~10s: exit play mode.
+        else if (_capturesTaken == 2 && _frame > 600)
+        {
+            EditorApplication.ExitPlaymode();
+            EditorApplication.update -= Tick;
+            Debug.Log("[HEALTHBAR-VALIDATE] Done");
+        }
+    }
+
+    static void Capture(string name)
+    {
+        var cam = Camera.main;
+        if (cam == null) { Debug.LogError("[HEALTHBAR-VALIDATE] no main camera"); return; }
+        var rt = new RenderTexture(1280, 720, 24);
+        cam.targetTexture = rt;
+        var tex = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+        cam.Render();
+        RenderTexture.active = rt;
+        tex.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
+        cam.targetTexture = null;
+        RenderTexture.active = null;
+        var bytes = tex.EncodeToPNG();
+        var path = "Assets/Captures/" + name;
+        File.WriteAllBytes(path, bytes);
+        Object.DestroyImmediate(tex);
+        Object.DestroyImmediate(rt);
+        Debug.Log("[HEALTHBAR-VALIDATE] captured " + path);
+    }
+}
+```
+
+This kicks off Play mode and schedules two captures (~2s and ~6s after entering Play) followed by an automatic exit. The script returns immediately; Unity continues running it in the background.
+
+- [ ] **Step 2: Wait for the capture run to finish**
+
+Wait ~15 seconds, then call `Unity_GetConsoleLogs` and look for:
+- `[HEALTHBAR-VALIDATE] captured Assets/Captures/healthbar_t0_full.png`
+- `[HEALTHBAR-VALIDATE] captured Assets/Captures/healthbar_t1_combat.png`
+- `[HEALTHBAR-VALIDATE] Done`
+
+If `Done` is not present yet, wait longer and re-check. If errors appear (e.g., null main camera, missing scene), investigate.
+
+- [ ] **Step 3: Inspect the captures**
+
+Use the `Read` tool on `Assets/Captures/healthbar_t0_full.png` and `Assets/Captures/healthbar_t1_combat.png`. Confirm visually:
+- `t0_full`: green bars are visible above every soldier, billboarded to the camera (oriented horizontally).
+- `t1_combat`: bars on damaged soldiers have shortened and shifted yellow/orange/red.
 
 - [ ] **Step 4: Confirm bars despawn with their soldier**
 
-Let combat finish on one team. Confirm dead soldiers' bars are gone (no orphaned bars hanging in space).
+Run another short MCP capture window from a later moment (e.g., 12s into Play) by editing the `_frame > 600` threshold up to `> 720` and re-running Step 1. After most of one team has fallen, the capture should show no orphaned bars hanging where dead soldiers were.
+
+(If both teams are still alive at the long timestamp, increase further; if you're already confident the `LinkedEntityGroup` cleanup works from unit tests, you may skip this step.)
 
 - [ ] **Step 5: Console hygiene**
 
-Unity MCP `Unity_GetConsoleLogs`: zero errors at end of session. Warnings related to `MaterialPropertyOverride` are acceptable only if the bars still render correctly; otherwise investigate.
+`Unity_GetConsoleLogs`: zero errors. Warnings about `MaterialPropertyOverride` are acceptable only if the bars rendered correctly in Step 3.
 
-- [ ] **Step 6: Profiler sanity (optional but recommended)**
+- [ ] **Step 6: Commit captures (optional)**
 
-Open **Window → Analysis → Profiler**, attach to the Editor's client world, look at CPU usage during a Play session. `HealthBarUpdateSystem` should sit well under 0.1 ms at 100/side. Record the number for future regression baselines.
+If you want the screenshots in the repo for review:
+
+```bash
+git add Assets/Captures
+git commit -m "chore(battle): add HealthBar validation captures"
+```
+
+Otherwise, add `Assets/Captures` to `.gitignore` before committing.
 
 - [ ] **Step 7: Final commit (optional notes)**
 
