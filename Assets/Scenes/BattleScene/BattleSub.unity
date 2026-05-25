@@ -166,6 +166,8 @@ MonoBehaviour:
   TargetRefreshIntervalTicks: 5
   RedColor: {r: 1, g: 0.1, b: 0.1, a: 1}
   BlueColor: {r: 0.1, g: 0.4, b: 1, a: 1}
+  HealthBarPrefab: {fileID: 8447683531645998406, guid: fd93711ad82ec4ef09e31e5f800d2eef, type: 3}
+  HealthBarHeightOffset: 1.2
 --- !u!4 &156679805
 Transform:
   m_ObjectHideFlags: 0
