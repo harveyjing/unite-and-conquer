@@ -45,7 +45,9 @@ namespace Demo.Tests
             float squadRotationSpeed = 2f,
             float contactMargin = 0.1f,
             int compactionIntervalTicks = 10,
-            int targetRefreshIntervalTicks = 1)
+            int targetRefreshIntervalTicks = 1,
+            Entity healthBarPrefab = default,
+            float healthBarHeightOffset = 1.2f)
         {
             var e = Manager.CreateEntity(typeof(BattleConfig));
             Manager.SetComponentData(e, new BattleConfig
@@ -68,6 +70,8 @@ namespace Demo.Tests
                 RedColor                   = new float4(1f, 0f, 0f, 1f),
                 BlueColor                  = new float4(0f, 0f, 1f, 1f),
                 CountPerSide               = squadsPerTeam * rows * cols,
+                HealthBarPrefab            = healthBarPrefab,
+                HealthBarHeightOffset      = healthBarHeightOffset,
             });
             return e;
         }
@@ -110,6 +114,18 @@ namespace Demo.Tests
             Manager.SetComponentData(e, new Health { Current = health, Max = health });
             Manager.SetComponentData(e, new AttackStats { Range = attackRange, Dps = dps });
             Manager.SetComponentData(e, LocalTransform.FromPosition(pos));
+            return e;
+        }
+
+        // Constructs a stand-in entity that masquerades as a baked HealthBar
+        // prefab for tests: it carries the components that HealthBarSpawnSystem
+        // copies/relies on when instantiating. EntityManager.Instantiate clones
+        // these components onto the spawned bar.
+        protected Entity CreateHealthBarStub()
+        {
+            var e = Manager.CreateEntity(typeof(HealthBarFill), typeof(LocalTransform));
+            Manager.SetComponentData(e, new HealthBarFill { Value = 1f });
+            Manager.SetComponentData(e, LocalTransform.Identity);
             return e;
         }
 
