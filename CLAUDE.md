@@ -4,17 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**Two-army battle simulation working end-to-end.** Unity 6000.4.1f1 / URP.
+**Squad-formation two-army battle working end-to-end, with per-soldier health bars.** Unity 6000.4.1f1 / URP.
 
-- **SampleScene** — original Netcode demo: `ClientServerBootstrap` + `GoInGame` RPC handshake, predicted player ghost (WASD), `DemoHudController` UI Toolkit HUD with ECS↔UI data binding.
-- **BattleScene** — two-army melee battle: `BattleSpawnSystem` spawns N red vs N blue soldiers (server-only), `TargetingSystem` assigns nearest enemies via Physics broadphase, `SoldierMovementSystem` advances toward targets, `MeleeDamageSystem` deals damage, `DeathSystem` destroys at zero health. `BattleHudController` counts ghost soldiers per team client-side and shows a winner banner. `BattleCameraMono` provides scroll-wheel zoom and middle-mouse pan.
+- **SampleScene** — original Netcode demo: `ClientServerBootstrap` (`GameBootstrap`) + `GoInGame` RPC handshake, predicted player ghost (WASD), `DemoHudController` UI Toolkit HUD with ECS↔UI data binding.
+- **BattleScene** — squad-based melee battle. Soldiers are organized into **Squad** entities (rectangular `Rows × Cols` formations); squads target the nearest enemy squad, advance/rotate as a unit, and soldiers follow assigned slots. As soldiers die the formation **compacts** (shrinks rows, reassigns slots). Each soldier shows a client-side health bar. `BattleHudController` counts ghost soldiers per team client-side and shows a winner banner. `BattleCameraMono` provides scroll-wheel zoom and middle-mouse pan.
 
 ## Unity project
 
 - **Editor:** 6000.4.1f1 · **URP:** 17.4.0 · **Input System:** 1.19.0 · **API:** .NET Standard 2.1
-- **Pinned DOTS packages:** `com.unity.entities.graphics` 6.4.0 · `com.unity.netcode` 1.11.0
+- **Pinned DOTS packages:** `com.unity.entities.graphics` 6.4.0 (Entities 1.4.x) · `com.unity.netcode` 1.13.1 · `com.unity.physics` 1.4.6
 - **Open via** Unity Hub → Add → select repo root. Do not use `unity-editor` CLI — use Unity MCP instead.
-- **Tests:** Window → General → Test Runner. ECS unit tests use `Unity.Entities.Tests` in an `EditMode` assembly. No `.asmdef` files yet — all code compiles into `Assembly-CSharp`.
+- **Assemblies:** code lives in the `Demo` assembly (`Assets/Scripts/Demo/Demo.asmdef`); tests in `Demo.Tests.EditMode` (`Assets/Tests/EditMode/`). Adding a new `using` for a Unity package may require adding it to `Demo.asmdef`'s `references`.
+- **Tests:** Window → General → Test Runner → EditMode (or run via Unity MCP). Tests subclass `EcsTestsBase`, which spins up a bare `World` per test and **deliberately avoids the `Unity.Entities.Tests` package** — it provides `CreateBattleConfig`/`CreateSquad`/`CreateSoldier` builders and `CreateAndUpdateSystem<T>()` (ticks one system and completes its job dependency so assertions see written data). To run a single test, filter by class/method name in the Test Runner. Systems are unit-tested in isolation (no full netcode world).
 
 ## Design vision
 
@@ -50,9 +51,11 @@ All code lives under `Assets/Scripts/Demo/` (`Demo` namespace):
 - **`System/`** — Burst `ISystem` implementations (SampleScene player systems)
 - **`UI/`** — `DemoHudViewModel`, `DemoHudController`, `RespawnRequest`, `SpawnObstacleRequest`
 - **`CameraFollowMono.cs`** / **`BattleCameraMono.cs`** — MonoBehaviour cameras; `CameraFollowMono` bridges ECS→camera (SampleScene); `BattleCameraMono` provides scroll-zoom + middle-mouse pan (BattleScene)
-- **`Battle/Authoring/`** — `SoldierAuthoring` (bakes `Soldier`, `Team`, `Health`, `AttackStats`, `Target`, `PhysicsCollider`; kinematic body for broadphase queries only), `BattleConfigAuthoring` (singleton `BattleConfig` that drives all battle systems)
-- **`Battle/System/`** — five server-only systems in strict execution order (see Battle system pipeline below)
+- **`Battle/Authoring/`** — `SoldierAuthoring` (bakes `Soldier`, `Team`, `SoldierColor`, `Health`, `AttackStats`, `SquadMembership`, kinematic `PhysicsCollider`), `BattleConfigAuthoring` (singleton `BattleConfig` that drives every battle system — squad shape, behavior, combat tuning, colors, health-bar prefab), `HealthBarAuthoring`, `SquadComponents.cs` (the `Squad`, `SquadTarget`, `SquadMember` buffer, `SquadMembership` components — all server-only)
+- **`Battle/SquadGeometry.cs`** — static Burst math (slot offsets, engagement distance, rows-for-alive-count) shared by spawn/movement/follow/compaction systems; no entity access, unit-tested directly
+- **`Battle/System/`** — server battle pipeline + client-only health-bar systems (see Battle system pipeline below)
 - **`Battle/UI/`** — `BattleHudController`, `BattleHudViewModel` (same pattern as `DemoHudController`)
+- **`Assets/Tests/EditMode/`** — EditMode unit tests for the squad systems and `SquadGeometry`
 
 Scenes: `Assets/Scenes/SampleScene.unity` + subscene `EcsDemoSub.unity`; `Assets/Scenes/BattleScene.unity` + subscene `BattleSub.unity`.
 
@@ -62,16 +65,25 @@ Pattern: **tag/component → authoring+baker → Burst `ISystem`**. Ghost prefab
 
 ## Battle system pipeline
 
-Execution order (all `ServerSimulation`, `SimulationSystemGroup`):
+The simulation is **squad-driven**: a `Squad` entity carries the formation shape (`Rows × Cols`, `Spacing`, `Team`) and a `SquadMember` buffer (one slot per formation position, `Entity.Null` = empty). Each soldier holds a `SquadMembership` (`Squad` + `SlotIndex`). Squads pick targets and move; individual soldiers just chase their assigned slot's world position. There is no per-soldier targeting.
 
-1. **`TargetingSystem`** — throttled to every `TargetRefreshIntervalTicks` server ticks; uses `PhysicsWorldSingleton.CalculateDistance` with a custom `NearestEnemyCollector` (`ICollector<DistanceHit>`) to find the closest enemy per soldier. Requires `PhysicsWorldSingleton` and `NetworkTime` singletons.
-2. **`SoldierMovementSystem`** (`UpdateAfter(TargetingSystem)`) — moves each soldier toward its target; stops when within `AttackRange`.
-3. **`MeleeDamageSystem`** (`UpdateAfter(SoldierMovementSystem)`) — scatter/gather damage pattern: `WriteDamageJob` (parallel `IJobChunk`) writes `DamageEvent`s into a `NativeStream`; `ReduceDamageJob` (serial `IJob`) drains the stream and decrements `Health`. This avoids concurrent writes to the same victim.
-4. **`DeathSystem`** (`UpdateAfter(MeleeDamageSystem)`) — destroys entities with `Health.Current <= 0` via ECB.
+Server execution order (all `ServerSimulation`, `SimulationSystemGroup`):
 
-**`BattleSpawnSystem`** runs once on the first frame (before `TargetingSystem`, no ordering attribute needed): bulk `EntityManager.Instantiate` then `IJobParallelFor` to initialize per-entity data. Sets `state.Enabled = false` after spawning. ECB-per-entity would cost hundreds of ms at 10k+10k.
+1. **`SquadTargetingSystem`** — throttled to every `TargetRefreshIntervalTicks` server ticks. Snapshots all squads into a `NativeArray<SquadSnapshot>` (`SnapshotJob`), then `AssignTargetJob` sets each squad's `SquadTarget` to the nearest enemy **squad** by squared distance. O(squads²), cheap because squad count is small. Requires `NetworkTime`.
+2. **`SquadMovementSystem`** (`UpdateAfter(SquadTargetingSystem)`) — rotates each squad toward its target (`SquadRotationSpeed`) and advances it (`SquadAdvanceSpeed`) until front ranks are within `SquadGeometry.EngagementDistance`.
+3. **`SoldierSlotFollowSystem`** (`UpdateAfter(SquadMovementSystem)`) — moves each soldier toward its slot's world position (`SquadGeometry.SlotLocalOffset` transformed by the squad's `LocalTransform`) at `SoldierStepSpeed`.
+4. **`MeleeDamageSystem`** (`UpdateAfter(SoldierSlotFollowSystem)`) — scatter/gather: `WriteDamageJob` (`IJobChunk`) finds nearby enemies via the squads' `SquadMember` buffers (`BufferLookup<SquadMember>`) and writes damage into a `NativeStream`; `ReduceDamageJob` (serial `IJob`) drains the stream and decrements `Health`. Stream avoids concurrent writes to the same victim.
+5. **`DeathSystem`** (`UpdateAfter(MeleeDamageSystem)`) — destroys entities with `Health.Current <= 0` via ECB (and clears their `SquadMember` slot).
+6. **`SquadCompactionSystem`** (`UpdateAfter(DeathSystem)`) — throttled by `CompactionIntervalTicks`. Reclaims dead slots: shrinks `Squad.Rows` to `SquadGeometry.RowsForAliveCount`, repacks survivors into low slot indices, and rewrites each survivor's `SquadMembership.SlotIndex`. Requires `NetworkTime`.
 
-**Physics setup in `SoldierAuthoring`:** kinematic `PhysicsMass`, zero `PhysicsVelocity`, `PhysicsWorldIndex(0)`. The body lives in the broadphase dynamic tree (so positions update as soldiers move) but physics never integrates it. `Soldier.Layer` (`1u << 1`) is the single source of truth for the collision filter layer bit used by both the collider and `TargetingSystem`'s `CollisionFilter`.
+**`BattleSpawnSystem`** runs once on the first frame (no ordering attribute needed — gated by `RequireForUpdate<BattleConfig>`): creates `2 * SquadsPerTeam` `Squad` entities laid in a line per team, bulk-spawns soldiers via `EntityManager.Instantiate`, then wires `SquadMembership` + `SquadMember` buffers and initializes per-soldier data with parallel jobs. Sets `state.Enabled = false` afterward. ECB-per-entity would cost hundreds of ms at scale.
+
+Client-only (both `ClientSimulation`, `PresentationSystemGroup`):
+
+- **`HealthBarSpawnSystem`** — instantiates the `HealthBarPrefab` for each ghost soldier that lacks a bar.
+- **`HealthBarUpdateSystem`** (`UpdateAfter(HealthBarSpawnSystem)`) — positions each bar above its soldier (`HealthBarHeightOffset`) and drives the `HealthBarFill` material property from replicated `Health.Current` / `BattleConfig.MaxHealth`.
+
+**Physics note:** `SoldierAuthoring` still bakes a kinematic `PhysicsCollider` (`Soldier.Layer = 1u << 1`, zero `PhysicsVelocity`, `PhysicsMass.CreateKinematic`, `PhysicsWorldIndex(0)`). **No battle system currently queries the physics world** — squad-level distance targeting replaced the old `PhysicsWorldSingleton`/`NearestEnemyCollector` broadphase approach, so the collider is presently vestigial (the `Soldier.Layer` doc comment is stale). Don't reintroduce a physics-broadphase dependency without re-checking this.
 
 ## UI Toolkit conventions
 
@@ -120,7 +132,7 @@ Verify these at session start; surface failures before other work.
 | Package | Library ID |
 |---------|-----------|
 | Unity Entities | `/needle-mirror/com.unity.entities` |
-| Netcode for Entities | `/websites/unity3d_packages_com_unity_netcode_1_10_api` |
+| Netcode for Entities | `/websites/unity3d_packages_com_unity_netcode_1_10_api` (snapshot of 1.10; installed package is **1.13.1** — re-verify version-specific APIs) |
 | Unity Burst | `/needle-mirror/com.unity.burst` |
 | Unity Collections | `/websites/unity3d_packages_com_unity_collections_2_6` |
 | Unity Mathematics | `/websites/unity3d_packages_com_unity_mathematics_1_3` |
@@ -134,3 +146,4 @@ Use Context7 for any Unity/Entities/Burst/Netcode API question. Use Firecrawl fo
 - [docs/basic-idea.md](docs/basic-idea.md) — original brief
 - [docs/research/2026-04-08-rxsg-gameplay-mechanics.md](docs/research/2026-04-08-rxsg-gameplay-mechanics.md) — 热血三国 system breakdown
 - [docs/research/2026-04-08-dots-netcode-mobile-mmo.md](docs/research/2026-04-08-dots-netcode-mobile-mmo.md) — DOTS + Netcode for mobile MMOs (late 2025); re-verify version-specific claims before relying on them
+- `docs/superpowers/specs/` + `docs/superpowers/plans/` — design specs and implementation plans per feature. Most recent: `2026-05-19-squad-formation-battle-design.md` (squad architecture) and `2026-05-24-per-soldier-health-bar-design.md` (health bars) — read these before changing battle systems.
