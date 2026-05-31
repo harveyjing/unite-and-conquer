@@ -1,0 +1,21 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="BattleHud.uss" />
+
+    <ui:VisualElement class="root" picking-mode="Ignore">
+        <ui:Label name="red-alive"  class="count count-red"  text="Red:  -">
+            <Bindings>
+                <ui:DataBinding property="text" data-source-path="RedAliveText" />
+            </Bindings>
+        </ui:Label>
+        <ui:Label name="blue-alive" class="count count-blue" text="Blue: -">
+            <Bindings>
+                <ui:DataBinding property="text" data-source-path="BlueAliveText" />
+            </Bindings>
+        </ui:Label>
+        <ui:Label name="winner" class="winner" text="">
+            <Bindings>
+                <ui:DataBinding property="text" data-source-path="WinnerText" />
+            </Bindings>
+        </ui:Label>
+    </ui:VisualElement>
+</ui:UXML>

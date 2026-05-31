@@ -22,6 +22,7 @@ namespace Demo
             var builder = new EntityQueryBuilder(Allocator.Temp).WithAll<PlayerCapsule>();
             state.RequireForUpdate(state.GetEntityQuery(builder));
             state.RequireForUpdate<NetworkId>();
+            state.RequireForUpdate<PrefabSpawner>();
         }
 
         [BurstCompile]
