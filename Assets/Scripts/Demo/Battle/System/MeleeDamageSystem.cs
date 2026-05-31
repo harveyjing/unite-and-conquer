@@ -102,22 +102,40 @@ namespace Demo
 
                 var enemyBuf   = BufferLookup[targetSquadEntity];
                 var enemySquad = SquadLookup[targetSquadEntity];
-                int pairCol    = m.SlotIndex % enemySquad.Cols;
-                if (pairCol >= enemyBuf.Length) continue;
 
-                Entity enemy = enemyBuf[pairCol].Value;
-                if (enemy == Entity.Null) continue;
-                if (!HealthLookup.HasComponent(enemy)) continue;
-                if (HealthLookup[enemy].Current <= 0f) continue;
-                if (!XformLookup.HasComponent(enemy)) continue;
+                // Pair by physical proximity, not column index. Compaction
+                // left-packs survivors into the lowest slots, so columns no
+                // longer line up and the buffer can be shorter than Cols; an
+                // index-based pairing then misfires and combat stalls. Instead
+                // scan the enemy front row (slots 0..Cols-1, the only ranks in
+                // reach) and damage the single nearest live enemy within Range.
+                float3 selfPos = xforms[i].Position;
+                float  range   = attacks[i].Range;
 
-                float distSq = math.distancesq(xforms[i].Position, XformLookup[enemy].Position);
-                float range  = attacks[i].Range;
-                if (distSq <= range * range)
+                Entity nearest    = Entity.Null;
+                float  nearestSq  = range * range;
+                int    frontCount = math.min(enemySquad.Cols, enemyBuf.Length);
+                for (int c = 0; c < frontCount; c++)
+                {
+                    Entity enemy = enemyBuf[c].Value;
+                    if (enemy == Entity.Null) continue;
+                    if (!HealthLookup.HasComponent(enemy)) continue;
+                    if (HealthLookup[enemy].Current <= 0f) continue;
+                    if (!XformLookup.HasComponent(enemy)) continue;
+
+                    float d = math.distancesq(selfPos, XformLookup[enemy].Position);
+                    if (d <= nearestSq)
+                    {
+                        nearestSq = d;
+                        nearest   = enemy;
+                    }
+                }
+
+                if (nearest != Entity.Null)
                 {
                     DamageWriter.Write(new DamageEvent
                     {
-                        Victim = enemy,
+                        Victim = nearest,
                         Amount = attacks[i].Dps * Dt,
                     });
                 }

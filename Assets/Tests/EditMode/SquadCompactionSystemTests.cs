@@ -44,6 +44,38 @@ namespace Demo.Tests
             Assert.AreEqual(1, membershipD.SlotIndex);
         }
 
+        // Regression: the throttle used to key off NetworkTime.ServerTick via
+        // `(tick + squadIndex) % interval == 0`. The server-observed tick is
+        // parity-constrained (always odd in practice), and interval is even, so
+        // `tick + index` was even only for odd-index squads — even-index squads
+        // could NEVER satisfy the throttle and never compacted. Their dead front
+        // rows lingered in the buffer, holding survivors out of melee range, and
+        // the battle froze. Compaction must not depend on ServerTick at all.
+        [Test]
+        public void Compacts_WithoutNetworkTime_NotThrottleStarvedByTickParity()
+        {
+            CreateBattleConfig(compactionIntervalTicks: 1);
+            // Deliberately do NOT create a NetworkTime singleton.
+
+            var squad = CreateSquad(0, 2, 2, 1f, float3.zero, quaternion.identity);
+            var buf = Manager.GetBuffer<SquadMember>(squad);
+            buf.ResizeUninitialized(4);
+            var deadFront = CreateSoldier(squad, slot: 0, pos: float3.zero, health: 0f);
+            var a = CreateSoldier(squad, slot: 1, pos: float3.zero, health: 30f);
+            var b = CreateSoldier(squad, slot: 2, pos: float3.zero, health: 30f);
+            var c = CreateSoldier(squad, slot: 3, pos: float3.zero, health: 30f);
+            buf[0] = new SquadMember { Value = deadFront };
+            buf[1] = new SquadMember { Value = a };
+            buf[2] = new SquadMember { Value = b };
+            buf[3] = new SquadMember { Value = c };
+
+            CreateAndUpdateSystem<SquadCompactionSystem>();
+
+            var freshBuf = Manager.GetBuffer<SquadMember>(squad);
+            Assert.AreEqual(3, freshBuf.Length, "dead front slot must be reclaimed");
+            Assert.AreEqual(a, freshBuf[0].Value, "survivors repack to the front");
+        }
+
         [Test]
         public void AllDead_DestroysSquadEntity()
         {

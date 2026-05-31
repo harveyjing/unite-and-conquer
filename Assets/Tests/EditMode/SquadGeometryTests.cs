@@ -41,9 +41,10 @@ namespace Demo.Tests
         public void EngagementDistance_Symmetric()
         {
             // Rows=5, spacing=1.5, AttackRange=0.8, margin=0.1.
-            // (5-1) * 0.5 * 1.5 = 3.0 per side. 3.0 + 3.0 + 0.8 + 0.1 = 6.9.
+            // (5-1) * 0.5 * 1.5 = 3.0 per side. 3.0 + 3.0 + 0.8 - 0.1 = 6.7.
+            // Margin is subtracted so front ranks settle inside attack reach.
             var d = SquadGeometry.EngagementDistance(5, 5, 1.5f, 0.8f, 0.1f);
-            Assert.AreEqual(6.9f, d, Tol);
+            Assert.AreEqual(6.7f, d, Tol);
         }
 
         [Test]

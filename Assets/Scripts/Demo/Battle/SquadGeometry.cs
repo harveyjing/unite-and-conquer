@@ -21,7 +21,9 @@ namespace Demo
         }
 
         // Anchor-to-anchor distance at which two facing squads' front ranks
-        // are within `attackRange` of each other.
+        // are within `attackRange` of each other. `contactMargin` is subtracted
+        // so the ranks settle just inside reach (gap = attackRange - margin),
+        // not just beyond it.
         public static float EngagementDistance(
             int selfRows, int targetRows, float spacing,
             float attackRange, float contactMargin)
@@ -29,7 +31,7 @@ namespace Demo
             return (selfRows   - 1) * 0.5f * spacing
                  + (targetRows - 1) * 0.5f * spacing
                  + attackRange
-                 + contactMargin;
+                 - contactMargin;
         }
 
         // Row count required to hold `aliveCount` soldiers in `cols`-wide rows.
