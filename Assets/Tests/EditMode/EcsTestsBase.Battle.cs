@@ -228,6 +228,20 @@ namespace Demo.Tests
             _livenessLastTotal = total;
         }
 
+        // Resets all harness fields. Called as a second [TearDown] alongside the base
+        // TearDown so Unity's NUnit single-instance fixture lifecycle doesn't leak
+        // _pipeline (a destroyed SimulationSystemGroup) into the next test.
+        [NUnit.Framework.TearDown]
+        public void TearDownHarness()
+        {
+            _pipeline      = null;
+            _networkTime   = default;
+            _serverTick    = 0;
+            _elapsed       = 0.0;
+            _livenessReady = false;
+            _livenessStaleTicks = 0;
+        }
+
         // Like RunUntilResolved, but checks safety + liveness invariants every tick.
         protected int RunUntilResolvedChecked(
             int maxTicks, int livenessWindow = 60, float dt = 0.1f, uint tickStride = 1)
