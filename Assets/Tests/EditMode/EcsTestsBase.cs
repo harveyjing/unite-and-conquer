@@ -104,16 +104,18 @@ namespace Demo.Tests
 
         protected Entity CreateSoldier(
             Entity squad, int slot, float3 pos,
-            float health = 50f, float attackRange = 0.8f, float dps = 25f)
+            float health = 50f, float attackRange = 0.8f, float dps = 25f,
+            int team = 0)
         {
             var e = Manager.CreateEntity(
                 typeof(Soldier), typeof(Team), typeof(Health), typeof(AttackStats),
-                typeof(SquadMembership), typeof(LocalTransform));
-            Manager.SetComponentData(e, new Team { Value = 0 });
+                typeof(SquadMembership), typeof(LocalTransform), typeof(GhostOwner));
+            Manager.SetComponentData(e, new Team { Value = team });
             Manager.SetComponentData(e, new SquadMembership { Squad = squad, SlotIndex = slot });
             Manager.SetComponentData(e, new Health { Current = health, Max = health });
             Manager.SetComponentData(e, new AttackStats { Range = attackRange, Dps = dps });
             Manager.SetComponentData(e, LocalTransform.FromPosition(pos));
+            Manager.SetComponentData(e, new GhostOwner { NetworkId = 0 });
             return e;
         }
 

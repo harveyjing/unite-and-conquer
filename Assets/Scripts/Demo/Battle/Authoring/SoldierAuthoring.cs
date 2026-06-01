@@ -65,6 +65,11 @@ namespace Demo
                 AddComponent(entity, new AttackStats { Range = 0f, Dps = 0f });
                 AddComponent(entity, new SquadMembership { Squad = Entity.Null, SlotIndex = -1 });
 
+                // Owner identity for replication. 0 = unowned; the server stamps
+                // the claiming connection's NetworkId on auth (AuthServerSystem).
+                // Netcode replicates this and enables GhostOwnerIsLocal on the owner.
+                AddComponent(entity, new GhostOwner { NetworkId = 0 });
+
                 var filter = new CollisionFilter
                 {
                     BelongsTo    = Soldier.Layer,
