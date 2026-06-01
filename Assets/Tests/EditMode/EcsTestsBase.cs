@@ -47,7 +47,9 @@ namespace Demo.Tests
             int compactionIntervalTicks = 10,
             int targetRefreshIntervalTicks = 1,
             Entity healthBarPrefab = default,
-            float healthBarHeightOffset = 1.2f)
+            float healthBarHeightOffset = 1.2f,
+            Entity ownershipRingPrefab = default,
+            float ringHeightOffset = 0.05f)
         {
             var e = Manager.CreateEntity(typeof(BattleConfig));
             Manager.SetComponentData(e, new BattleConfig
@@ -72,6 +74,8 @@ namespace Demo.Tests
                 CountPerSide               = squadsPerTeam * rows * cols,
                 HealthBarPrefab            = healthBarPrefab,
                 HealthBarHeightOffset      = healthBarHeightOffset,
+                OwnershipRingPrefab        = ownershipRingPrefab,
+                RingHeightOffset           = ringHeightOffset,
             });
             return e;
         }
@@ -127,6 +131,15 @@ namespace Demo.Tests
         {
             var e = Manager.CreateEntity(typeof(HealthBarFill), typeof(LocalTransform));
             Manager.SetComponentData(e, new HealthBarFill { Value = 1f });
+            Manager.SetComponentData(e, LocalTransform.Identity);
+            return e;
+        }
+
+        // Stand-in for the baked OwnershipRing prefab: a renderable entity with a
+        // transform that OwnershipRingSpawnSystem clones via EntityManager.Instantiate.
+        protected Entity CreateOwnershipRingStub()
+        {
+            var e = Manager.CreateEntity(typeof(LocalTransform));
             Manager.SetComponentData(e, LocalTransform.Identity);
             return e;
         }
