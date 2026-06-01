@@ -23,24 +23,26 @@ This slice is deliberately read-only: ownership grants *visual identification on
 
 Five pieces, each with a clear boundary. The auth handshake and ownership assignment are **server-authoritative**; the login UI and ring rendering are **client-only/presentation**.
 
-### 1. Auth handshake (replaces auto-GoInGame)
+### 1. Auth handshake (layered on top of GoInGame)
 
-Today `GoInGameClientSystem` sends `GoInGameRequest` automatically as soon as it has a `NetworkId`. We gate this behind login.
+The existing `GoInGameClientSystem` auto-send and `GoInGameServerSystem` are **left untouched** — the client still goes in-game automatically and begins receiving ghost snapshots, so the battle renders behind the login overlay and SampleScene is unaffected. Login is layered on top and gates **army ownership**, not in-game status. (This avoids a subscene-load race: gating in-game on login would let the client auto-go-in-game before `BattleConfig` loads, bypassing the gate.)
 
-- **New RPC:** `AuthenticateRequest { FixedString64Bytes Username }` — carries the go-in-game intent plus the claimed identity.
-- **Client send path:** the login UI writes a `PendingAuth { Username }` singleton into the client world on submit. `ClientAuthSendSystem` (ClientSimulation) observes `PendingAuth`, sends the `AuthenticateRequest` RPC to the server connection, then clears `PendingAuth`. The old auto-send in `GoInGameClientSystem` is removed.
-- **Server receive path:** `GoInGameServerSystem` is repurposed/renamed to `AuthServerSystem`. On receiving `AuthenticateRequest`:
-  - If `Username` is empty → do nothing (connection stays out-of-game; no `NetworkStreamInGame`). The login screen keeps waiting. No explicit reject RPC.
-  - If `Username` is non-empty → add `NetworkStreamInGame` to the connection, record the identity, and perform team assignment (§2).
+- **New RPC:** `AuthenticateRequest { FixedString64Bytes Username }` — carries the claimed identity.
+- **Client send path:** the login UI writes a `PendingAuth { Username }` singleton into the client world on submit. `ClientAuthSendSystem` (ClientSimulation) observes `PendingAuth`, sends the `AuthenticateRequest` RPC to the server (`SendRpcCommandRequest` with `TargetConnection = Entity.Null` = the single server connection, mirroring `DemoHudController.SendRpc`), then destroys the `PendingAuth` entity.
+- **Server receive path:** a new `AuthServerSystem` (server) handles `AuthenticateRequest`, mirroring `RespawnRequestServerSystem`'s shape (query incoming RPCs, look up the requester's `NetworkId`, destroy the request entity). On a request:
+  - If `Username` is empty → claim nothing (destroy the request; no ownership granted).
+  - If `Username` is non-empty → perform team assignment (§2).
+- **Login complete signal (client):** the login panel hides when the local client owns at least one soldier, i.e. a `Soldier` ghost with `GhostOwnerIsLocal` enabled exists. No `AuthResult` RPC is needed. (A 3rd+ spectator owns nothing, so its panel stays up — an accepted edge for this 2-player slice.)
 
 ### 2. Server-side ownership assignment
 
-- **State:** a server-side record of which `NetworkId` owns Team 0 and Team 1, plus a "next free team" cursor. Implemented as a `TeamClaims` singleton (two slots + cursor) or equivalent.
+- **State:** a `TeamClaims` singleton component `{ int Team0Owner; int Team1Owner; }` recording which `NetworkId` owns each team. `0` = unclaimed (netcode `NetworkId` values start at 1). `AuthServerSystem` creates the singleton on first update if absent.
 - **On a valid auth:**
-  1. If a free team exists, claim the next one; otherwise the connection is a **spectator** (skip the remaining steps).
-  2. Store `ConnectionOwner { NetworkId, Team }` on the connection entity.
-  3. **Stamp** `GhostOwner.Value = <connection NetworkId>` onto every already-spawned soldier whose `Team.Value == claimedTeam`, via an `IJobEntity` over soldiers. Because `GhostOwner` is replicated, clients observe the change on the next snapshot.
-- **Team-claim invariant:** the cursor never assigns the same team twice.
+  1. Pick the team to claim: if `Team0Owner == 0` → team 0; else if `Team1Owner == 0` → team 1; else **spectator** (claim nothing, return).
+  2. Record the requester's `NetworkId` in the chosen `TeamClaims` slot.
+  3. **Stamp** `GhostOwner.NetworkId = <requester NetworkId>` onto every soldier whose `Team.Value == claimedTeam` (`foreach`/`IJobEntity` over `Soldier`+`Team`+`GhostOwner`). Because `GhostOwner` is replicated, clients observe the change next snapshot.
+- **Team-claim invariant:** a team slot, once non-zero, is never reassigned.
+- **Assumption:** soldiers are all spawned once by `BattleSpawnSystem` on frame 1 (long before a human types a username), so a one-shot stamp at auth time covers the whole team. No re-stamp system is needed (no soldier respawns in this slice).
 
 ### 3. Ghost prefab change
 
@@ -53,32 +55,33 @@ Today `GoInGameClientSystem` sends `GoInGameRequest` automatically as soon as it
 - **Controller:** `LoginHudController` mirrors `DemoHudController` — lazy client-world find, request-entity pattern (like `RespawnRequest`). On submit it writes `PendingAuth { Username }`.
 - **Visibility:** the login panel is shown until the local connection has `NetworkStreamInGame`, then hidden; the battle view / `BattleHud` takes over.
 
-### 5. Client ownership ring (mirrors health-bar systems)
+### 5. Client ownership ring (mirrors health-bar spawn system)
 
-- **Asset:** an `OwnershipRingPrefab` (flat disc/ring quad with a ring material), referenced from `BattleConfig` alongside `HealthBarPrefab`.
-- **`OwnershipRingSpawnSystem`** (ClientSimulation, PresentationSystemGroup): for each soldier ghost `WithAll<GhostOwnerIsLocal>` that lacks a ring, instantiate the ring. Same managed-companion lifecycle/cleanup shape as `HealthBarSpawnSystem`.
-- **`OwnershipRingUpdateSystem`** (`UpdateAfter(OwnershipRingSpawnSystem)`): position each ring at its soldier's feet. Mirrors `HealthBarUpdateSystem`.
+- **Asset:** an `OwnershipRingPrefab` (flat disc/ring mesh authored lying flat on the ground), referenced from `BattleConfig` alongside `HealthBarPrefab`, plus a `RingHeightOffset` (small, e.g. `0.05`).
+- **`OwnershipRingSpawnSystem`** (ClientSimulation, PresentationSystemGroup): for each soldier ghost `WithAll<Soldier, LocalTransform, GhostOwnerIsLocal>` that lacks an `OwnershipRingRef`, instantiate the ring, parent it to the soldier at the height offset, set `OwnershipRingRef { Ring }` on the soldier, and register a `LinkedEntityGroup` so the ring despawns with the soldier — identical lifecycle to `HealthBarSpawnSystem`.
+- **No update system.** The ring is parented to the soldier with a static local offset, so the transform hierarchy moves it for free. (The health bar needs an update system only to drive its fill from `Health`; the ring has no per-frame data.)
 - Enemy and neutral soldiers get no ring. Spectators see no rings at all.
 
 ## Data flow (end to end)
 
-1. Client process starts → netcode connects (auto-connect to 127.0.0.1:7979 unchanged) → client world gets a `NetworkId`. Login panel visible; **no** auto-GoInGame.
-2. User types a username, clicks Enter Battle → `LoginHudController` writes `PendingAuth { Username }`.
-3. `ClientAuthSendSystem` sends `AuthenticateRequest` → clears `PendingAuth`.
-4. `AuthServerSystem` validates, adds `NetworkStreamInGame`, claims next free team, writes `ConnectionOwner`, stamps `GhostOwner` on that team's soldiers.
-5. Snapshot replicates `GhostOwner`; netcode enables `GhostOwnerIsLocal` on the client for owned soldiers.
-6. `OwnershipRingSpawnSystem`/`UpdateSystem` render rings under owned soldiers. Login panel hides (connection now `NetworkStreamInGame`).
+1. Client process starts → netcode connects (auto-connect to 127.0.0.1:7979) → `GoInGameClientSystem` auto-sends `GoInGameRequest` (unchanged) → client goes in-game and starts rendering both armies (no rings yet). Login panel is shown as an overlay.
+2. User types a username, clicks Enter Battle → `LoginHudController` writes a `PendingAuth { Username }` entity into the client world.
+3. `ClientAuthSendSystem` sends `AuthenticateRequest` to the server → destroys `PendingAuth`.
+4. `AuthServerSystem` looks up the requester's `NetworkId`, claims the next free team in `TeamClaims`, and stamps `GhostOwner.NetworkId` on that team's soldiers (empty username or no free team → claims nothing).
+5. The snapshot replicates `GhostOwner`; netcode enables `GhostOwnerIsLocal` on the client for the owned soldiers.
+6. `OwnershipRingSpawnSystem` renders ground rings under the owned soldiers. `LoginHudController` sees a local `GhostOwnerIsLocal` soldier and hides the login panel.
 
 ## Testing (EditMode, `EcsTestsBase`)
 
-- `AuthServerSystem`:
-  - valid username → claims the next free team and stamps `GhostOwner` on that team's soldiers;
-  - a second valid auth → claims the other team;
-  - empty username → claims nothing, no `NetworkStreamInGame`;
-  - a third valid auth → claims nothing (spectator), no team stamped.
-- Team-claim cursor never double-assigns a team.
-- Extend the test builders with a soldier carrying `GhostOwner`.
-- Pure client-side ring rendering and the login UI are verified manually in the Editor (consistent with how the existing health-bar visuals are validated).
+- `AuthServerSystem` (driven by hand-built `ReceiveRpcCommandRequest` + `AuthenticateRequest` entities and connection entities carrying `NetworkId`):
+  - valid username → claims team 0 and stamps `GhostOwner.NetworkId` on team-0 soldiers; team-1 soldiers untouched;
+  - a second valid auth from a different `NetworkId` → claims team 1 and stamps team-1 soldiers;
+  - empty username → claims nothing (`TeamClaims` unchanged, no soldier stamped);
+  - a third valid auth → claims nothing (spectator); both team slots keep their first owners.
+- `ClientAuthSendSystem`: given a `PendingAuth` singleton, produces one entity carrying `AuthenticateRequest` (matching username) + `SendRpcCommandRequest`, and the `PendingAuth` entity is consumed.
+- `OwnershipRingSpawnSystem`: a soldier with `GhostOwnerIsLocal` enabled and a ring-prefab stub gets exactly one ring (`OwnershipRingRef` set, `LinkedEntityGroup` registered); a soldier without `GhostOwnerIsLocal` gets none.
+- Extend the test builders so soldier archetypes include `GhostOwner`, plus a `CreateOwnershipRingStub` helper.
+- The login UXML/USS, `LoginHudController`, scene/prefab wiring, and the visual ring appearance are verified in the Editor via Unity MCP (consistent with how health-bar visuals are validated).
 
 ## Out of scope (deferred)
 
@@ -89,11 +92,13 @@ Today `GoInGameClientSystem` sends `GoInGameRequest` automatically as soon as it
 
 ## Files touched (anticipated)
 
-- `Assets/Scripts/Demo/Bootstrap/GoInGame.cs` — remove client auto-send; repurpose server system as `AuthServerSystem`; add `AuthenticateRequest` RPC and `PendingAuth` + `ConnectionOwner` components (or split into new files).
-- `Assets/Scripts/Demo/Battle/Authoring/SoldierAuthoring.cs` — bake `GhostOwner`.
-- `Assets/Scripts/Demo/Battle/Authoring/BattleConfigAuthoring.cs` (+ `BattleConfig`) — add `OwnershipRingPrefab`.
-- `Assets/Scripts/Demo/Battle/System/` — new `OwnershipRingSpawnSystem`, `OwnershipRingUpdateSystem`; new server `TeamClaims`/assignment logic.
-- `Assets/Scripts/Demo/UI/` or `Assets/Scripts/Demo/Battle/UI/` — `LoginHudController`, `PendingAuth` request type.
-- `Assets/UI/LoginHud.{uxml,uss}` — new login panel.
-- `Assets/Tests/EditMode/` — `AuthServerSystem` tests; builder extension for `GhostOwner`.
-- Prefabs: `OwnershipRingPrefab`.
+- `Assets/Scripts/Demo/Bootstrap/GoInGame.cs` — **unchanged** (auto-send and `GoInGameServerSystem` retained).
+- `Assets/Scripts/Demo/Battle/Authoring/SoldierAuthoring.cs` — bake `GhostOwner { NetworkId = 0 }`.
+- `Assets/Scripts/Demo/Battle/Authoring/BattleConfigAuthoring.cs` (+ `BattleConfig`) — add `OwnershipRingPrefab` + `RingHeightOffset`.
+- `Assets/Scripts/Demo/Battle/Auth.cs` (new) — `AuthenticateRequest` RPC, `TeamClaims`, `PendingAuth`, `AuthServerSystem`, `ClientAuthSendSystem`.
+- `Assets/Scripts/Demo/Battle/Authoring/OwnershipRingAuthoring.cs` (new) — `OwnershipRingRef` component (+ optional authoring tag for the prefab).
+- `Assets/Scripts/Demo/Battle/System/OwnershipRingSpawnSystem.cs` (new).
+- `Assets/Scripts/Demo/Battle/UI/LoginHudController.cs` (new).
+- `Assets/UI/LoginHud.{uxml,uss}` (new) — login panel.
+- `Assets/Tests/EditMode/` — `AuthServerSystemTests`, `ClientAuthSendSystemTests`, `OwnershipRingSpawnSystemTests`; builder extensions (`GhostOwner` on soldiers, `CreateOwnershipRingStub`).
+- Prefab: `Assets/Prefabs/OwnershipRing.prefab`; BattleScene `BattleSub` subscene wiring + a `UIDocument` for the login panel; `GhostOwner` added to the soldier ghost prefab's component list.
