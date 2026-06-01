@@ -11,7 +11,7 @@ namespace Demo.Tests
     // Minimal per-test ECS world. Avoids the Unity.Entities.Tests package
     // dependency. Subclasses get a fresh World + EntityManager and helpers
     // for the four entity shapes our systems read.
-    public abstract class EcsTestsBase
+    public abstract partial class EcsTestsBase
     {
         protected World         World;
         protected EntityManager Manager;
