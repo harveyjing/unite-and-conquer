@@ -150,5 +150,15 @@ namespace Demo.Tests
             stateRef.Dependency.Complete();
             return handle;
         }
+
+        // Re-runs OnUpdate on an already-created system of type T (one handle per
+        // world). Use after CreateAndUpdateSystem<T>() when a test needs another tick.
+        protected void UpdateExistingSystem<T>() where T : unmanaged, ISystem
+        {
+            var handle = World.GetExistingSystem<T>();
+            ref var stateRef = ref World.Unmanaged.ResolveSystemStateRef(handle);
+            World.Unmanaged.GetUnsafeSystemRef<T>(handle).OnUpdate(ref stateRef);
+            stateRef.Dependency.Complete();
+        }
     }
 }
