@@ -168,6 +168,8 @@ MonoBehaviour:
   BlueColor: {r: 0.1, g: 0.4, b: 1, a: 1}
   HealthBarPrefab: {fileID: 8447683531645998406, guid: fd93711ad82ec4ef09e31e5f800d2eef, type: 3}
   HealthBarHeightOffset: 1.2
+  OwnershipRingPrefab: {fileID: 7191354674150572663, guid: c37d1671626864593bcec93c8451ce75, type: 3}
+  RingHeightOffset: 0.05
 --- !u!4 &156679805
 Transform:
   m_ObjectHideFlags: 0
