@@ -109,5 +109,22 @@ namespace Demo.Tests
             Assert.AreEqual(1, OwnerOfTeam(0), "team 0 keeps its first owner");
             Assert.AreEqual(2, OwnerOfTeam(1), "team 1 keeps its first owner");
         }
+
+        [Test]
+        public void SameConnectionAuthingTwice_DoesNotClaimBothTeams()
+        {
+            SpawnTwoTeams();
+            var conn = CreateConnection(1);
+
+            SendAuth(conn, "cao_cao");
+            CreateAndUpdateSystem<AuthServerSystem>();
+
+            // Same connection authenticates again (e.g. a duplicate/late RPC).
+            SendAuth(conn, "cao_cao");
+            UpdateExistingSystem<AuthServerSystem>();
+
+            Assert.AreEqual(1, OwnerOfTeam(0), "team 0 owned by NetworkId 1");
+            Assert.AreEqual(0, OwnerOfTeam(1), "team 1 stays unclaimed; one connection never owns both");
+        }
     }
 }

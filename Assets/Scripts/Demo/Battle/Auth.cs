@@ -72,6 +72,10 @@ namespace Demo
                 if (!_networkIdLookup.HasComponent(src)) continue;
                 int id = _networkIdLookup[src].Value;
 
+                // Idempotent per connection: a NetworkId that already owns a team
+                // ignores further/duplicate auth requests, so it can never grab both.
+                if (claims.Team0Owner == id || claims.Team1Owner == id) continue;
+
                 int team;
                 if      (claims.Team0Owner == 0) { claims.Team0Owner = id; team = 0; }
                 else if (claims.Team1Owner == 0) { claims.Team1Owner = id; team = 1; }
