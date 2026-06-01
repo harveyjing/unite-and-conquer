@@ -106,4 +106,38 @@ namespace Demo
             stampOwner.Dispose();
         }
     }
+
+    // Client-only request written by the login UI: send this username to the server.
+    public struct PendingAuth : IComponentData
+    {
+        public FixedString64Bytes Username;
+    }
+
+    // Client: drains PendingAuth requests into outgoing AuthenticateRequest RPCs.
+    [BurstCompile]
+    [WorldSystemFilter(WorldSystemFilterFlags.ClientSimulation)]
+    public partial struct ClientAuthSendSystem : ISystem
+    {
+        [BurstCompile]
+        public void OnCreate(ref SystemState state)
+        {
+            state.RequireForUpdate<PendingAuth>();
+        }
+
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
+        {
+            var ecb = new EntityCommandBuffer(Allocator.Temp);
+            foreach (var (pending, entity) in
+                     SystemAPI.Query<RefRO<PendingAuth>>().WithEntityAccess())
+            {
+                var rpc = ecb.CreateEntity();
+                ecb.AddComponent(rpc, new AuthenticateRequest { Username = pending.ValueRO.Username });
+                ecb.AddComponent(rpc, new SendRpcCommandRequest()); // Null target = server
+                ecb.DestroyEntity(entity);
+            }
+            ecb.Playback(state.EntityManager);
+            ecb.Dispose();
+        }
+    }
 }
