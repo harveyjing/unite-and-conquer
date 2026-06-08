@@ -161,7 +161,7 @@ MonoBehaviour:
   BlueCenter: {x: 20, y: 0, z: 0}
   SoldierStepSpeed: 2
   AttackRange: 0.8
-  Dps: 25
+  Dps: 1
   MaxHealth: 50
   TargetRefreshIntervalTicks: 5
   RedColor: {r: 1, g: 0.1, b: 0.1, a: 1}

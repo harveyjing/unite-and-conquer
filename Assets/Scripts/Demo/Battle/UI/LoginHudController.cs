@@ -13,17 +13,21 @@ namespace Demo
     // Enter click: write a PendingAuth entity into the client world
     //   (ClientAuthSendSystem turns it into an AuthenticateRequest RPC).
     // Update: lazy-find the client world; once the local player owns a soldier
-    //   (a Soldier with GhostOwnerIsLocal exists) hide the panel.
+    //   (a Soldier whose replicated GhostOwner.NetworkId matches this client's
+    //   NetworkId) hide the overlay. Ownership is detected by NetworkId comparison
+    //   rather than the GhostOwnerIsLocal tag, which Netcode never adds to these plain
+    //   interpolated soldier ghosts.
     [RequireComponent(typeof(UIDocument))]
     public class LoginHudController : MonoBehaviour
     {
-        VisualElement _panel;
+        VisualElement _overlay;
         TextField _usernameField;
         Button _enterBtn;
         EventCallback<ClickEvent> _enterHandler;
 
         World _clientWorld;
-        EntityQuery _ownedSoldierQuery;
+        EntityQuery _networkIdQuery;
+        EntityQuery _ownerQuery;
         bool _loggedIn;
 
         void OnEnable()
@@ -37,7 +41,7 @@ namespace Demo
                 return;
             }
 
-            _panel         = root.Q<VisualElement>("login-panel");
+            _overlay       = root.Q<VisualElement>("login-overlay");
             _usernameField = root.Q<TextField>("username-field");
             _enterBtn      = root.Q<Button>("enter-btn");
 
@@ -49,8 +53,10 @@ namespace Demo
         {
             if (_enterBtn != null && _enterHandler != null)
                 _enterBtn.UnregisterCallback(_enterHandler);
-            if (_ownedSoldierQuery != default) _ownedSoldierQuery.Dispose();
-            _ownedSoldierQuery = default;
+            if (_networkIdQuery != default) _networkIdQuery.Dispose();
+            if (_ownerQuery != default) _ownerQuery.Dispose();
+            _networkIdQuery = default;
+            _ownerQuery = default;
             _clientWorld = null;
         }
 
@@ -77,22 +83,34 @@ namespace Demo
         {
             if (_clientWorld == null || !_clientWorld.IsCreated)
             {
-                if (_ownedSoldierQuery != default) _ownedSoldierQuery.Dispose();
-                _ownedSoldierQuery = default;
+                if (_networkIdQuery != default) _networkIdQuery.Dispose();
+                if (_ownerQuery != default) _ownerQuery.Dispose();
+                _networkIdQuery = default;
+                _ownerQuery = default;
                 _clientWorld = FindClientWorld();
                 if (_clientWorld == null) return;
 
-                _ownedSoldierQuery = _clientWorld.EntityManager.CreateEntityQuery(
+                var em = _clientWorld.EntityManager;
+                _networkIdQuery = em.CreateEntityQuery(ComponentType.ReadOnly<NetworkId>());
+                _ownerQuery = em.CreateEntityQuery(
                     ComponentType.ReadOnly<Soldier>(),
-                    ComponentType.ReadOnly<GhostOwnerIsLocal>());
+                    ComponentType.ReadOnly<GhostOwner>());
             }
 
             if (_loggedIn) return;
 
-            if (!_ownedSoldierQuery.IsEmpty)
+            // Not connected yet → no local NetworkId to compare against.
+            if (_networkIdQuery.IsEmpty) return;
+            int localId = _networkIdQuery.GetSingleton<NetworkId>().Value;
+            if (localId == 0) return;
+
+            using var owners = _ownerQuery.ToComponentDataArray<GhostOwner>(Allocator.Temp);
+            for (int i = 0; i < owners.Length; i++)
             {
+                if (owners[i].NetworkId != localId) continue;
                 _loggedIn = true;
-                if (_panel != null) _panel.style.display = DisplayStyle.None;
+                if (_overlay != null) _overlay.style.display = DisplayStyle.None;
+                break;
             }
         }
     }

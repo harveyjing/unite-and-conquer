@@ -109,7 +109,7 @@ namespace Demo.Tests
         protected Entity CreateSoldier(
             Entity squad, int slot, float3 pos,
             float health = 50f, float attackRange = 0.8f, float dps = 25f,
-            int team = 0)
+            int team = 0, int owner = 0)
         {
             var e = Manager.CreateEntity(
                 typeof(Soldier), typeof(Team), typeof(Health), typeof(AttackStats),
@@ -119,7 +119,17 @@ namespace Demo.Tests
             Manager.SetComponentData(e, new Health { Current = health, Max = health });
             Manager.SetComponentData(e, new AttackStats { Range = attackRange, Dps = dps });
             Manager.SetComponentData(e, LocalTransform.FromPosition(pos));
-            Manager.SetComponentData(e, new GhostOwner { NetworkId = 0 });
+            Manager.SetComponentData(e, new GhostOwner { NetworkId = owner });
+            return e;
+        }
+
+        // Stand-in for the local client connection: a single entity carrying a
+        // NetworkId. Ownership detection compares a soldier's replicated
+        // GhostOwner.NetworkId against this value.
+        protected Entity CreateLocalConnection(int networkId = 1)
+        {
+            var e = Manager.CreateEntity(typeof(NetworkId));
+            Manager.SetComponentData(e, new NetworkId { Value = networkId });
             return e;
         }
 

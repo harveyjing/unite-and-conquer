@@ -67,7 +67,11 @@ namespace Demo
 
                 // Owner identity for replication. 0 = unowned; the server stamps
                 // the claiming connection's NetworkId on auth (AuthServerSystem).
-                // Netcode replicates this and enables GhostOwnerIsLocal on the owner.
+                // Netcode replicates the NetworkId; client-side ownership is detected by
+                // comparing it to the local NetworkId (LoginHudController /
+                // OwnershipRingSpawnSystem). Note: Netcode does NOT add the
+                // GhostOwnerIsLocal tag to these plain interpolated soldiers (no input/
+                // command setup), so don't rely on it here.
                 AddComponent(entity, new GhostOwner { NetworkId = 0 });
 
                 var filter = new CollisionFilter

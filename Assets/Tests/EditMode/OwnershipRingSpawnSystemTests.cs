@@ -18,8 +18,8 @@ namespace Demo.Tests
         public void OwnedSoldier_GetsExactlyOneRing()
         {
             SetupConfigWithRing();
-            var soldier = CreateSoldier(Entity.Null, 0, float3.zero);
-            Manager.AddComponent<GhostOwnerIsLocal>(soldier); // enabled by default
+            CreateLocalConnection(1);
+            var soldier = CreateSoldier(Entity.Null, 0, float3.zero, owner: 1);
 
             CreateAndUpdateSystem<OwnershipRingSpawnSystem>();
 
@@ -39,7 +39,8 @@ namespace Demo.Tests
         public void UnownedSoldier_GetsNoRing()
         {
             SetupConfigWithRing();
-            var soldier = CreateSoldier(Entity.Null, 0, float3.zero); // no GhostOwnerIsLocal
+            CreateLocalConnection(1);
+            var soldier = CreateSoldier(Entity.Null, 0, float3.zero, owner: 2); // owned by someone else
 
             CreateAndUpdateSystem<OwnershipRingSpawnSystem>();
 
@@ -50,8 +51,8 @@ namespace Demo.Tests
         public void Ring_AppendsToExistingLinkedGroup_FromHealthBar()
         {
             SetupConfigWithRing();
-            var soldier = CreateSoldier(Entity.Null, 0, float3.zero);
-            Manager.AddComponent<GhostOwnerIsLocal>(soldier);
+            CreateLocalConnection(1);
+            var soldier = CreateSoldier(Entity.Null, 0, float3.zero, owner: 1);
 
             // Simulate HealthBarSpawnSystem having already linked a bar.
             var bar = Manager.CreateEntity(typeof(LocalTransform));
