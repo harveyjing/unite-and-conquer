@@ -20,13 +20,14 @@ namespace Demo.Tests
             var e = Manager.CreateEntity(
                 typeof(Soldier), typeof(Team), typeof(SoldierColor), typeof(Health),
                 typeof(AttackStats), typeof(SquadMembership),
-                typeof(LocalTransform), typeof(LocalToWorld));
+                typeof(LocalTransform), typeof(LocalToWorld), typeof(GhostOwner));
             Manager.SetComponentData(e, new Team { Value = 0 });
             Manager.SetComponentData(e, new SoldierColor { Value = new float4(1, 1, 1, 1) });
             Manager.SetComponentData(e, new Health { Current = maxHealth, Max = maxHealth });
             Manager.SetComponentData(e, new AttackStats { Range = attackRange, Dps = dps });
             Manager.SetComponentData(e, new SquadMembership { Squad = Entity.Null, SlotIndex = -1 });
             Manager.SetComponentData(e, LocalTransform.Identity);
+            Manager.SetComponentData(e, new GhostOwner { NetworkId = 0 });
             return e;
         }
 

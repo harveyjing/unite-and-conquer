@@ -1,0 +1,30 @@
+.overlay {
+    flex-grow: 1;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.55);
+}
+
+.panel {
+    width: 360px;
+    padding: 24px;
+    background-color: rgba(20, 20, 28, 0.96);
+    border-radius: 8px;
+    align-items: stretch;
+}
+
+.title {
+    font-size: 22px;
+    color: rgb(235, 235, 235);
+    -unity-text-align: middle-center;
+    margin-bottom: 16px;
+}
+
+.field {
+    margin-bottom: 16px;
+}
+
+.enter-btn {
+    height: 36px;
+    font-size: 15px;
+}

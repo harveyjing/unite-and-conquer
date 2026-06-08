@@ -44,6 +44,10 @@ namespace Demo
         // Health bar.
         public Entity HealthBarPrefab;
         public float  HealthBarHeightOffset;
+
+        // Ownership ring (client-only marker for the local player's army).
+        public Entity OwnershipRingPrefab;
+        public float  RingHeightOffset;
     }
 
     public class BattleConfigAuthoring : MonoBehaviour
@@ -84,6 +88,11 @@ namespace Demo
         [Tooltip("HealthBar prefab — see Assets/Prefabs/HealthBar.prefab (created in Task 8).")]
         public GameObject HealthBarPrefab;
         public float      HealthBarHeightOffset = 1.2f;
+
+        [Header("Ownership ring")]
+        [Tooltip("OwnershipRing prefab — flat ring/disc mesh, see Assets/Prefabs/OwnershipRing.prefab (wired in a later Editor step).")]
+        public GameObject OwnershipRingPrefab;
+        public float      RingHeightOffset = 0.05f;
 
         class Baker : Baker<BattleConfigAuthoring>
         {
@@ -126,6 +135,10 @@ namespace Demo
                         ? GetEntity(authoring.HealthBarPrefab, TransformUsageFlags.Dynamic)
                         : Entity.Null,
                     HealthBarHeightOffset = authoring.HealthBarHeightOffset,
+                    OwnershipRingPrefab = authoring.OwnershipRingPrefab != null
+                        ? GetEntity(authoring.OwnershipRingPrefab, TransformUsageFlags.Dynamic)
+                        : Entity.Null,
+                    RingHeightOffset = authoring.RingHeightOffset,
                 });
             }
         }

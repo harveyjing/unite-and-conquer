@@ -1,0 +1,10 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="LoginHud.uss" />
+    <ui:VisualElement name="login-overlay" class="overlay">
+        <ui:VisualElement name="login-panel" class="panel">
+            <ui:Label text="Enter the Battle" class="title" />
+            <ui:TextField name="username-field" label="Username" class="field" />
+            <ui:Button name="enter-btn" text="Enter Battle" class="enter-btn" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

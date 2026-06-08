@@ -47,7 +47,9 @@ namespace Demo.Tests
             int compactionIntervalTicks = 10,
             int targetRefreshIntervalTicks = 1,
             Entity healthBarPrefab = default,
-            float healthBarHeightOffset = 1.2f)
+            float healthBarHeightOffset = 1.2f,
+            Entity ownershipRingPrefab = default,
+            float ringHeightOffset = 0.05f)
         {
             var e = Manager.CreateEntity(typeof(BattleConfig));
             Manager.SetComponentData(e, new BattleConfig
@@ -72,6 +74,8 @@ namespace Demo.Tests
                 CountPerSide               = squadsPerTeam * rows * cols,
                 HealthBarPrefab            = healthBarPrefab,
                 HealthBarHeightOffset      = healthBarHeightOffset,
+                OwnershipRingPrefab        = ownershipRingPrefab,
+                RingHeightOffset           = ringHeightOffset,
             });
             return e;
         }
@@ -104,16 +108,28 @@ namespace Demo.Tests
 
         protected Entity CreateSoldier(
             Entity squad, int slot, float3 pos,
-            float health = 50f, float attackRange = 0.8f, float dps = 25f)
+            float health = 50f, float attackRange = 0.8f, float dps = 25f,
+            int team = 0, int owner = 0)
         {
             var e = Manager.CreateEntity(
                 typeof(Soldier), typeof(Team), typeof(Health), typeof(AttackStats),
-                typeof(SquadMembership), typeof(LocalTransform));
-            Manager.SetComponentData(e, new Team { Value = 0 });
+                typeof(SquadMembership), typeof(LocalTransform), typeof(GhostOwner));
+            Manager.SetComponentData(e, new Team { Value = team });
             Manager.SetComponentData(e, new SquadMembership { Squad = squad, SlotIndex = slot });
             Manager.SetComponentData(e, new Health { Current = health, Max = health });
             Manager.SetComponentData(e, new AttackStats { Range = attackRange, Dps = dps });
             Manager.SetComponentData(e, LocalTransform.FromPosition(pos));
+            Manager.SetComponentData(e, new GhostOwner { NetworkId = owner });
+            return e;
+        }
+
+        // Stand-in for the local client connection: a single entity carrying a
+        // NetworkId. Ownership detection compares a soldier's replicated
+        // GhostOwner.NetworkId against this value.
+        protected Entity CreateLocalConnection(int networkId = 1)
+        {
+            var e = Manager.CreateEntity(typeof(NetworkId));
+            Manager.SetComponentData(e, new NetworkId { Value = networkId });
             return e;
         }
 
@@ -125,6 +141,15 @@ namespace Demo.Tests
         {
             var e = Manager.CreateEntity(typeof(HealthBarFill), typeof(LocalTransform));
             Manager.SetComponentData(e, new HealthBarFill { Value = 1f });
+            Manager.SetComponentData(e, LocalTransform.Identity);
+            return e;
+        }
+
+        // Stand-in for the baked OwnershipRing prefab: a renderable entity with a
+        // transform that OwnershipRingSpawnSystem clones via EntityManager.Instantiate.
+        protected Entity CreateOwnershipRingStub()
+        {
+            var e = Manager.CreateEntity(typeof(LocalTransform));
             Manager.SetComponentData(e, LocalTransform.Identity);
             return e;
         }
@@ -147,6 +172,16 @@ namespace Demo.Tests
             World.Unmanaged.GetUnsafeSystemRef<T>(handle).OnUpdate(ref stateRef);
             stateRef.Dependency.Complete();
             return handle;
+        }
+
+        // Re-runs OnUpdate on an already-created system of type T (one handle per
+        // world). Use after CreateAndUpdateSystem<T>() when a test needs another tick.
+        protected void UpdateExistingSystem<T>() where T : unmanaged, ISystem
+        {
+            var handle = World.GetExistingSystem<T>();
+            ref var stateRef = ref World.Unmanaged.ResolveSystemStateRef(handle);
+            World.Unmanaged.GetUnsafeSystemRef<T>(handle).OnUpdate(ref stateRef);
+            stateRef.Dependency.Complete();
         }
     }
 }
