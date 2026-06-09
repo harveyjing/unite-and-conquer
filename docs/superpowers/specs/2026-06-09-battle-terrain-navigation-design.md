@@ -99,11 +99,11 @@ when it has a gap). `Entrance`/`Exit` are symmetric — a squad approaching from
 either bank uses whichever endpoint is on its side as the entrance.
 
 **Barrier-crossing test (pure math, `SquadGeometry`-style, unit-tested):** a
-squad's straight path crosses a region when the segment `squadPos → targetPos`
-intersects the region's box. v1 may approximate the oriented box by its
-centerline segment (rivers/passes are long and thin) — the test is
-segment–segment intersection. Authoring keeps regions long-and-thin so the
-approximation holds.
+squad's straight path crosses a region when the XZ segment `squadPos → targetPos`
+intersects the region's oriented box. Implemented as
+`SquadGeometry.SegmentIntersectsBox` — transform the segment into the box's local
+frame (undo center + yaw) and run a 2D slab test against
+`[-HalfExtents, +HalfExtents]`. Y is ignored (regions are vertical prisms).
 
 **Authoring:** `TerrainRegionAuthoring` (+ optional `CrossingPortalAuthoring`)
 MonoBehaviours on GameObjects in the `BattleSub` subscene, with gizmos drawing
@@ -173,22 +173,30 @@ terrain awareness in `SquadNavigationSystem` — the seam where a smarter planne
 (grid/flow-field) could later replace *how the goal is chosen* without touching
 movement, soldiers, formation, or combat.
 
-### Re-shape via the existing repack
+### Re-shape is just `Cols` + `Rows`
 
-Crossing the bridge = the squad becomes a narrow column. We reuse the formation
-machinery rather than inventing new layout code:
+Crossing the bridge = the squad becomes a narrow column. This needs **no buffer
+repack and no `SlotIndex` rewrite**, because `SquadCompactionSystem` already
+keeps survivors packed into contiguous slots `0..alive-1`, and
+`SoldierSlotFollowSystem` derives each soldier's world position from
+`SquadGeometry.SlotLocalOffset(SlotIndex, Rows, Cols, spacing)`. Changing the
+squad's `Cols` therefore re-lays the same packed soldiers into a different
+formation automatically — a soldier in slot 7 moves from row 0 of a 10-wide line
+to row 3 of a 2-wide column with no per-soldier write.
 
-- Narrow `Cols` = `floor(Portal.Width / Spacing)` (clamped ≥ 1), so the block
-  fits the corridor; `Rows = SquadGeometry.RowsForAliveCount(alive, narrowCols)`.
-- Re-shaping is a **slot repack**: set `Squad.Cols`, then pack surviving
-  soldiers into slots `0..alive-1` and rewrite each `SquadMembership.SlotIndex`
-  — exactly what `SquadCompactionSystem` already does on death. **Factor that
-  repack into a shared helper** (e.g. `SquadGeometry`/a small repack utility)
-  called by both compaction and the navigation re-shape.
+- Narrow `Cols` = `SquadGeometry.NarrowColsForWidth(Portal.Width, Spacing)`
+  (= `floor(width / spacing)`, clamped ≥ 1) so the block fits the corridor;
+  `Rows = SquadGeometry.RowsForAliveCount(alive, narrowCols)`.
+- Re-shape = set `Squad.Cols` + `Squad.Rows`. Restore on exit = set them back to
+  `BaseCols` (cached on entry) and the matching row count.
 - `Squad.Cols` becomes squad state that navigation owns. `SquadCompactionSystem`
-  must use the squad's *current* `Cols` (it already reads `Squad.Cols`), so it
-  keeps compacting correctly whether the squad is wide or narrow. Restoring
-  width on exit is another repack back to `BaseCols`.
+  already reads the current `Squad.Cols`, so it keeps compacting correctly
+  whether the squad is wide or narrow — the two systems never fight because both
+  only ever set `Rows`/`Cols` from the current alive count and current width.
+- Transient note: if a squad re-shapes while it still holds dead-but-not-yet-
+  compacted soldiers, the narrow block shows gaps until the next compaction
+  interval — the same tolerated staleness the formation already exhibits between
+  death and compaction.
 
 Because soldiers always follow `SquadGeometry.SlotLocalOffset(slot, Rows, Cols,
 spacing)` transformed by the squad's `LocalTransform`, a narrow block whose
@@ -241,10 +249,9 @@ EditMode unit tests via `EcsTestsBase` (`CreateBattleConfig` / `CreateSquad` /
 `CreateSoldier` builders; add `CreateTerrainRegion` / `CreateCrossingPortal`
 builders).
 
-- **`SquadGeometry` pure math:** segment-vs-region intersection (crossing /
-  not-crossing / collinear edge cases); nearest-portal selection; narrow-`Cols`
-  from `Portal.Width`; shared repack helper (survivors pack to low slots,
-  `SlotIndex` rewritten) for both wide→narrow and narrow→wide.
+- **`SquadGeometry` pure math:** `SegmentIntersectsBox` (crossing / not-crossing
+  / parallel-miss / endpoint-inside / rotated box); `NarrowColsForWidth`
+  (conservative floor, clamp ≥ 1).
 - **`SquadNavigationSystem`:** squad with a barrier between it and target
   transitions Pursue → ApproachPortal → Crossing → Pursue and writes the
   expected `SquadMoveGoal` (waypoint + `Engage` flag) at each stage; squad with
@@ -258,13 +265,14 @@ existing harness.
 
 ## Risks / notes
 
-- **Re-shape vs compaction race:** both rewrite `Cols`/`Rows`/slots. Mitigated by
-  ordering (navigation re-shape before slot-follow; compaction after death) and
-  by both going through one idempotent repack helper that always uses the
-  current `Cols`.
-- **Oriented-box vs centerline approximation:** v1 treats long-thin regions as a
-  centerline segment for the crossing test. Authoring must keep regions
-  long-and-thin; a fat region would need true box intersection (deferred).
+- **Re-shape vs compaction:** both only ever set `Squad.Cols`/`Rows` from the
+  current alive count and current width, never the buffer or `SlotIndex`, so they
+  cannot conflict. Navigation re-shape runs before slot-follow (soldiers pick up
+  the new shape same tick); compaction runs after death.
+- **Portal not linked to region:** v1 picks the nearest portal by entrance
+  distance, not the portal that actually clears the crossed region. Fine while
+  features are few and well separated; document for designers and revisit if
+  maps put a river bridge and a valley pass close together.
 - **Soldiers clipping water on transitions:** prevented by choosing narrow `Cols`
   so `narrowCols * spacing ≤ Portal.Width` and placing `Entrance`/`Exit` on the
   correct banks; the slot-follow path then stays within the corridor.
