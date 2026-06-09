@@ -61,14 +61,19 @@ namespace Demo.Tests
             return _networkTime;
         }
 
-        // Builds the real server SimulationSystemGroup with the six continuous battle
+        // Builds the real server SimulationSystemGroup with the continuous battle
         // systems and sorts them. SortSystems() honors each system's [UpdateAfter], so
         // the production execution order is exercised, not re-hardcoded here.
+        // SquadNavigationSystem runs between targeting and movement: it writes the
+        // SquadMoveGoal that SquadMovementSystem consumes. With no terrain authored in
+        // these tests it finds zero regions, leaving every squad in Pursue (goal =
+        // target, Engage = 1) — i.e. the pre-terrain straight-line behavior.
         protected SimulationSystemGroup CreateServerPipeline()
         {
             if (_pipeline != null) return _pipeline;
             var group = World.GetOrCreateSystemManaged<SimulationSystemGroup>();
             group.AddSystemToUpdateList(World.CreateSystem<SquadTargetingSystem>());
+            group.AddSystemToUpdateList(World.CreateSystem<SquadNavigationSystem>());
             group.AddSystemToUpdateList(World.CreateSystem<SquadMovementSystem>());
             group.AddSystemToUpdateList(World.CreateSystem<SoldierSlotFollowSystem>());
             group.AddSystemToUpdateList(World.CreateSystem<MeleeDamageSystem>());
