@@ -15,6 +15,8 @@ namespace Demo
     public partial struct SquadNavigationSystem : ISystem
     {
         // Distance at which the squad anchor is considered "arrived" at a waypoint.
+        // Invariant: must exceed one advance step (SquadAdvanceSpeed * maxDt) so a squad
+        // can't sail past a waypoint in a single tick without triggering its transition.
         const float ArriveThreshold = 1.0f;
 
         EntityQuery _squadQuery;
@@ -139,9 +141,9 @@ namespace Demo
             {
                 var e = members[i].Value;
                 if (e == Entity.Null) continue;
-                if (!HealthLookup.HasComponent(e)) continue;
-                if (HealthLookup[e].Current <= 0f) continue;
-                n++;
+                // Single hash-map probe; skips destroyed (no Health) and dead soldiers.
+                if (HealthLookup.TryGetComponent(e, out var h) && h.Current > 0f)
+                    n++;
             }
             return n;
         }
@@ -160,6 +162,9 @@ namespace Demo
 
         bool TryPickPortal(float3 pos, out float3 entrance, out float3 exit, out float width)
         {
+            // Nearest portal by Euclidean distance to either endpoint; direction and
+            // navigability are not considered, so authoring must place only valid
+            // crossings (see the spec's portal-not-linked-to-region note).
             entrance = default; exit = default; width = 0f;
             float best = float.MaxValue;
             bool found = false;
