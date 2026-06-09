@@ -75,5 +75,56 @@ namespace Demo.Tests
         {
             Assert.AreEqual(0, SquadGeometry.RowsForAliveCount(0, 10));
         }
+
+        [Test]
+        public void SegmentIntersectsBox_CrossesThinWall_True()
+        {
+            // Box centered at origin, thin in x (half 1), long in z (half 5), no yaw.
+            // Segment runs along x straight through it.
+            bool hit = SquadGeometry.SegmentIntersectsBox(
+                new float3(-3, 0, 0), new float3(3, 0, 0),
+                float3.zero, new float2(1f, 5f), 0f);
+            Assert.IsTrue(hit);
+        }
+
+        [Test]
+        public void SegmentIntersectsBox_PassesBeyondEnd_False()
+        {
+            // Same box; segment at z = 8 is north of the box's z extent (half 5).
+            bool hit = SquadGeometry.SegmentIntersectsBox(
+                new float3(-3, 0, 8), new float3(3, 0, 8),
+                float3.zero, new float2(1f, 5f), 0f);
+            Assert.IsFalse(hit);
+        }
+
+        [Test]
+        public void SegmentIntersectsBox_ParallelOutside_False()
+        {
+            // Segment runs along z at x = 5, outside the box's x extent (half 1).
+            bool hit = SquadGeometry.SegmentIntersectsBox(
+                new float3(5, 0, -3), new float3(5, 0, 3),
+                float3.zero, new float2(1f, 5f), 0f);
+            Assert.IsFalse(hit);
+        }
+
+        [Test]
+        public void SegmentIntersectsBox_EndpointInside_True()
+        {
+            bool hit = SquadGeometry.SegmentIntersectsBox(
+                float3.zero, new float3(3, 0, 0),
+                float3.zero, new float2(1f, 5f), 0f);
+            Assert.IsTrue(hit);
+        }
+
+        [Test]
+        public void SegmentIntersectsBox_RotatedBox_True()
+        {
+            // Same thin-in-x box rotated 90° about Y is now long-in-x / thin-in-z.
+            // A segment along z through the origin now crosses it.
+            bool hit = SquadGeometry.SegmentIntersectsBox(
+                new float3(0, 0, -3), new float3(0, 0, 3),
+                float3.zero, new float2(1f, 5f), math.radians(90f));
+            Assert.IsTrue(hit);
+        }
     }
 }
