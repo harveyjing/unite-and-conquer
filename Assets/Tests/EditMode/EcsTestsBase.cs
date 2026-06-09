@@ -96,13 +96,39 @@ namespace Demo.Tests
         {
             var e = Manager.CreateEntity(
                 typeof(Squad), typeof(SquadTarget), typeof(SquadMember),
+                typeof(SquadNav), typeof(SquadMoveGoal),
                 typeof(LocalTransform), typeof(LocalToWorld));
             Manager.SetComponentData(e, new Squad
             {
                 Team = team, Rows = rows, Cols = cols, Spacing = spacing,
             });
             Manager.SetComponentData(e, new SquadTarget { Value = Entity.Null });
+            Manager.SetComponentData(e, new SquadNav { State = NavState.Pursue });
+            Manager.SetComponentData(e, new SquadMoveGoal { Position = position, Engage = 0 });
             Manager.SetComponentData(e, LocalTransform.FromPositionRotation(position, rotation));
+            return e;
+        }
+
+        protected Entity CreateTerrainRegion(
+            float3 center, float2 halfExtents, float yaw = 0f,
+            byte passable = 0, TerrainKind kind = TerrainKind.River)
+        {
+            var e = Manager.CreateEntity(typeof(TerrainRegion));
+            Manager.SetComponentData(e, new TerrainRegion
+            {
+                Center = center, HalfExtents = halfExtents, Yaw = yaw,
+                Passable = passable, MoveMultiplier = 1f, Kind = kind,
+            });
+            return e;
+        }
+
+        protected Entity CreateCrossingPortal(float3 entrance, float3 exit, float width)
+        {
+            var e = Manager.CreateEntity(typeof(CrossingPortal));
+            Manager.SetComponentData(e, new CrossingPortal
+            {
+                Entrance = entrance, Exit = exit, Width = width,
+            });
             return e;
         }
 
