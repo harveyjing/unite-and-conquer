@@ -40,6 +40,8 @@ namespace Demo
                 typeof(Squad),
                 typeof(SquadTarget),
                 typeof(SquadMember),
+                typeof(SquadNav),
+                typeof(SquadMoveGoal),
                 typeof(LocalTransform),
                 typeof(LocalToWorld));
 
@@ -60,6 +62,8 @@ namespace Demo
                 });
                 em.SetComponentData(redSquads[i], new SquadTarget { Value = Entity.Null });
                 em.SetComponentData(redSquads[i], LocalTransform.FromPositionRotation(redPos, redFacing));
+                em.SetComponentData(redSquads[i], new SquadNav { State = NavState.Pursue });
+                em.SetComponentData(redSquads[i], new SquadMoveGoal { Position = redPos, Engage = 0 });
                 var redBuf = em.GetBuffer<SquadMember>(redSquads[i]);
                 redBuf.ResizeUninitialized(soldiersPerSquad);
                 for (int s = 0; s < soldiersPerSquad; s++)
@@ -72,6 +76,8 @@ namespace Demo
                 });
                 em.SetComponentData(blueSquads[i], new SquadTarget { Value = Entity.Null });
                 em.SetComponentData(blueSquads[i], LocalTransform.FromPositionRotation(bluePos, blueFacing));
+                em.SetComponentData(blueSquads[i], new SquadNav { State = NavState.Pursue });
+                em.SetComponentData(blueSquads[i], new SquadMoveGoal { Position = bluePos, Engage = 0 });
                 var blueBuf = em.GetBuffer<SquadMember>(blueSquads[i]);
                 blueBuf.ResizeUninitialized(soldiersPerSquad);
                 for (int s = 0; s < soldiersPerSquad; s++)
