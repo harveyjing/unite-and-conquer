@@ -67,6 +67,7 @@ namespace Demo
                 float dir    = axis == 0 ? d.x : d.y;
                 float half   = axis == 0 ? halfExtents.x : halfExtents.y;
 
+                // 1e-8 is far below any real world-space direction component, so this only catches truly axis-parallel segments.
                 if (math.abs(dir) < 1e-8f)
                 {
                     // Segment parallel to this slab: reject if it lies outside.
@@ -92,8 +93,8 @@ namespace Demo
         {
             float dx = p.x - center.x;
             float dz = p.z - center.z;
-            return new float2(dx * cosA - dz * sinA,
-                              dx * sinA + dz * cosA);
+            return new float2(dx * cosA - dz * sinA,  // .x = localX
+                              dx * sinA + dz * cosA); // .y = localZ
         }
     }
 }

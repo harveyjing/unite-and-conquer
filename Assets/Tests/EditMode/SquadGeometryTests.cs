@@ -88,11 +88,22 @@ namespace Demo.Tests
         }
 
         [Test]
-        public void SegmentIntersectsBox_PassesBeyondEnd_False()
+        public void SegmentIntersectsBox_LateralMiss_False()
         {
             // Same box; segment at z = 8 is north of the box's z extent (half 5).
             bool hit = SquadGeometry.SegmentIntersectsBox(
                 new float3(-3, 0, 8), new float3(3, 0, 8),
+                float3.zero, new float2(1f, 5f), 0f);
+            Assert.IsFalse(hit);
+        }
+
+        [Test]
+        public void SegmentIntersectsBox_SegmentTooShort_False()
+        {
+            // Segment runs along x but ends at x = -2, before reaching the box's
+            // x extent (half 1, i.e. left face at x = -1). tmax=1 clamping rejects it.
+            bool hit = SquadGeometry.SegmentIntersectsBox(
+                new float3(-5, 0, 0), new float3(-2, 0, 0),
                 float3.zero, new float2(1f, 5f), 0f);
             Assert.IsFalse(hit);
         }
