@@ -133,5 +133,63 @@ namespace Demo.Tests
             Assert.LessOrEqual(CountLiveSquads(1), CountLiveSquads(0),
                 "handicapped side should not have more live squads than the winner");
         }
+
+        // --- Terrain navigation end-to-end ---
+
+        // A river wall sits on the x-axis between the two armies, with a bridge portal to
+        // the north. The straight path between the squads crosses the wall, so each squad
+        // must detour through the portal. Proves SquadNavigationSystem drives the real
+        // server pipeline (not just unit-level state transitions): the red squad leaves
+        // Pursue and moves north toward the bridge instead of walking into the water.
+        [Test]
+        public void RiverBetweenArmies_SquadDetoursNorthThroughBridge()
+        {
+            var config = CreateBattleConfig(
+                squadsPerTeam: 1, rows: 2, cols: 2,
+                attackRange: 1.0f, dps: 60f, maxHealth: 50f,
+                soldierStepSpeed: 6f, squadAdvanceSpeed: 6f, squadRotationSpeed: 8f,
+                compactionIntervalTicks: 4, targetRefreshIntervalTicks: 1);
+            var bc = Manager.GetComponentData<BattleConfig>(config);
+            bc.RedCenter  = new float3(-6f, 0f, 0f);
+            bc.BlueCenter = new float3( 6f, 0f, 0f);
+            Manager.SetComponentData(config, bc);
+            SpawnViaBattleSpawnSystem(config);
+
+            // Impassable river: thin in x, long in z, straddling the x-axis path.
+            CreateTerrainRegion(new float3(0, 0, 0), new float2(1.5f, 6f),
+                passable: 0, kind: TerrainKind.River);
+            // Bridge to the north, beyond the wall's z extent (entrance->exit stays clear).
+            CreateCrossingPortal(new float3(-3, 0, 9), new float3(3, 0, 9), width: 3f);
+
+            bool redDetoured = false;
+            float maxRedZ = float.MinValue;
+            for (int i = 0; i < 80; i++)
+            {
+                RunBattle(1);
+                var red = FirstSquad(0);
+                if (red == Entity.Null) break; // red eliminated (shouldn't happen this fast)
+                if (Manager.GetComponentData<SquadNav>(red).State != NavState.Pursue)
+                    redDetoured = true;
+                float z = Manager.GetComponentData<Unity.Transforms.LocalTransform>(red).Position.z;
+                maxRedZ = math.max(maxRedZ, z);
+            }
+
+            Assert.IsTrue(redDetoured,
+                "red's straight path to blue crosses the river, so it must leave Pursue to route through the bridge");
+            Assert.Greater(maxRedZ, 2f,
+                "red should move north toward the bridge entrance (z~9), not straight into the water");
+        }
+
+        // First squad entity on `team` (or Entity.Null). Squads are few, so a linear scan is fine.
+        Entity FirstSquad(int team)
+        {
+            var q = Manager.CreateEntityQuery(typeof(Squad), typeof(SquadNav));
+            var ents = q.ToEntityArray(Unity.Collections.Allocator.Temp);
+            Entity found = Entity.Null;
+            foreach (var e in ents)
+                if (Manager.GetComponentData<Squad>(e).Team == team) { found = e; break; }
+            ents.Dispose();
+            return found;
+        }
     }
 }
