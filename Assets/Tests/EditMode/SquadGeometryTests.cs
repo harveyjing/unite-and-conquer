@@ -137,5 +137,23 @@ namespace Demo.Tests
                 float3.zero, new float2(1f, 5f), math.radians(90f));
             Assert.IsTrue(hit);
         }
+
+        [Test]
+        public void NarrowColsForWidth_FitsWholeColumns()
+        {
+            // spacing 1.5: width 2 -> floor(1.33)=1 (single file, conservative margin)
+            Assert.AreEqual(1, SquadGeometry.NarrowColsForWidth(2f, 1.5f));
+            // width 4 -> floor(2.67)=2
+            Assert.AreEqual(2, SquadGeometry.NarrowColsForWidth(4f, 1.5f));
+            // spacing 1: width 3 -> 3
+            Assert.AreEqual(3, SquadGeometry.NarrowColsForWidth(3f, 1f));
+        }
+
+        [Test]
+        public void NarrowColsForWidth_NeverBelowOne()
+        {
+            Assert.AreEqual(1, SquadGeometry.NarrowColsForWidth(0.5f, 1f));
+            Assert.AreEqual(1, SquadGeometry.NarrowColsForWidth(2f, 0f)); // bad spacing guard
+        }
     }
 }

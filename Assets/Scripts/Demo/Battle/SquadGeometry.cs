@@ -42,6 +42,17 @@ namespace Demo
             return (aliveCount + cols - 1) / cols;
         }
 
+        // Widest column count whose soldiers (one `spacing` apart) fit within a
+        // corridor of `width`. Conservative floor leaves roughly a half-spacing
+        // margin on each side, keeping the narrow block clear of the water/cliff
+        // edges when a squad crosses a portal. Always >= 1.
+        public static int NarrowColsForWidth(float width, float spacing)
+        {
+            if (spacing <= 0f) return 1;
+            int cols = (int)math.floor(width / spacing);
+            return math.max(1, cols);
+        }
+
         // True if the XZ segment p0->p1 intersects the oriented box (center,
         // halfExtents, yaw radians about Y). Y is ignored — terrain regions are
         // vertical prisms. Transforms the segment into the box's local frame and
