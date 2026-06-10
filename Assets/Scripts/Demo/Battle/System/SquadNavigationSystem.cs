@@ -37,6 +37,7 @@ namespace Demo
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
+            var config  = SystemAPI.GetSingleton<BattleConfig>();
             var regions = _regionQuery.ToComponentDataArray<TerrainRegion>(Allocator.TempJob);
             var portals = _portalQuery.ToComponentDataArray<CrossingPortal>(Allocator.TempJob);
 
@@ -47,6 +48,8 @@ namespace Demo
                 XformLookup     = SystemAPI.GetComponentLookup<LocalTransform>(true),
                 HealthLookup    = SystemAPI.GetComponentLookup<Health>(true),
                 ArriveThreshold = ArriveThreshold,
+                AttackRange     = config.AttackRange,
+                ContactMargin   = config.ContactMargin,
             }.ScheduleParallel(_squadQuery, state.Dependency);
 
             state.Dependency = regions.Dispose(state.Dependency);
@@ -63,6 +66,8 @@ namespace Demo
         public ComponentLookup<LocalTransform> XformLookup;
         [Unity.Collections.ReadOnly] public ComponentLookup<Health> HealthLookup;
         public float ArriveThreshold;
+        public float AttackRange;
+        public float ContactMargin;
 
         public void Execute(
             ref Squad squad,
@@ -73,6 +78,28 @@ namespace Demo
             in DynamicBuffer<SquadMember> members)
         {
             float3 pos = xform.Position;
+
+            // Engagement override: if the target enemy is within engagement reach,
+            // stop and fight wherever we are — even mid-crossing at a contested
+            // bridge. Without this, Crossing/ApproachPortal always walk to the far
+            // waypoint with Engage=0, so two armies funnel onto one bridge, pass
+            // *through* each other, then re-target the enemy now across the river and
+            // route back — an endless ping-pong that thrashes the formation. Stopping
+            // to fight here breaks both the pass-through and the oscillation.
+            if (target.Value != Entity.Null && XformLookup.HasComponent(target.Value))
+            {
+                float3 enemyPos = XformLookup[target.Value].Position;
+                // Approximate the enemy's depth by our own Rows (avoids a parallel read
+                // of another squad's Squad component). Good enough for a contest gate.
+                float engageDist = SquadGeometry.EngagementDistance(
+                    squad.Rows, squad.Rows, squad.Spacing, AttackRange, ContactMargin);
+                if (math.distancesq(pos, enemyPos) <= engageDist * engageDist)
+                {
+                    goal.Position = enemyPos;
+                    goal.Engage   = 1;
+                    return; // hold and fight; resume the crossing state machine once the enemy is gone
+                }
+            }
 
             switch (nav.State)
             {
