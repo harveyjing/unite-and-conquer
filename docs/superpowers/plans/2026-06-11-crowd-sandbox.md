@@ -1097,6 +1097,8 @@ git commit -m "docs(crowd): document the crowd sandbox subsystem"
 
 ## Validation results (2026-06-11)
 
+> **Superseded — see [### Root cause + fix (same day)](#root-cause--fix-same-day) below.** The FAIL numbers in this section were the *symptom*; the confirmed root cause and the applied fix follow at the end of this section.
+
 Live MCP validation of `CrowdScene` at the committed default (750 + 750). All checks performed via Unity MCP `Unity_RunCommand` / `Unity_GetConsoleLogs` / `Unity_SceneView_CaptureMultiAngleSceneView`.
 
 ### Boot check — PASS
@@ -1143,3 +1145,27 @@ Measured via `Time.frameCount` / `Time.realtimeSinceStartup` deltas across an MC
 ### Subscene state
 
 `Assets/Scenes/CrowdScene/CrowdSub.unity` was edited to `Army0Count = Army1Count = 1000` (with `EditorUtility.SetDirty` + `EditorSceneManager.SaveScene`, confirmed re-bake via `CrowdSpawnSystem: spawned 1000 + 1000 soldiers.`), then reverted to `750/750` the same way. `git status --porcelain` after the revert showed **no changes** — the subscene is back to its committed state.
+
+### Root cause + fix (same day)
+
+Hypothesis-driven debugging session (2026-06-11). Two hypotheses were tested against live play-mode evidence in `CrowdScene`.
+
+**H1 — soldier bodies never enter the physics world (missing `Unity.Entities.Simulate` enableable tag): REFUTED.**
+Live `Unity_RunCommand` against the Default World queried `PhysicsWorldSingleton`:
+- `PhysicsWorld: NumDynamicBodies = 1500`, `NumStaticBodies = 3`, `NumBodies = 1503` — every soldier is a fully registered **dynamic** rigid body (the two static banks + bridge collider account for the 3 statics).
+- `soldier[0]: Simulate(has=True, enabled=True)` — `Simulate` *is* present and enabled. (It lives in `Unity.Entities`, not `Unity.Physics`, and is auto-added & enabled on every entity by the Entities baking/instantiation path, so the hand-rolled baker omitting it is harmless.)
+- `soldier[0] PhysicsMass.InverseMass = 0.0143` (= 1/70, finite) — genuinely dynamic, not kinematic.
+- The package's own `PhysicsWorldData` dynamic-body query (`Library/PackageCache/com.unity.physics@.../ECS/Base/Systems/PhysicsWorldData.cs`) requires only `PhysicsVelocity, LocalTransform, PhysicsWorldIndex` — all of which the baker adds — and does **not** require `Simulate` to match. So no baker component was missing. Physics runs as designed.
+
+**H2 — the shared single-goal point is pathological: CONFIRMED.**
+With physics confirmed running, min pairwise XZ distance was measured (O(n²) over `CrowdSoldier` `LocalTransform`s):
+- **Early march** (~fresh play, soldiers still converging, `xRange=[-16.0, 16.4]`): `MIN_PAIR_XZ = 0.0006`, **404 pairs < 0.1**, 1467 < 0.5, 3228 < 0.75. Total interpenetration already during the head-on pass — the two 750-strong armies march in opposite directions toward overlapping single goal points and crush straight through each other, while steering re-stomps `PhysicsVelocity` into the oncoming mass every tick so the solver can never recover.
+- **Late game** (`xRange=[-39.6, 39.6]`): `MIN_PAIR_XZ = 0.0011` — soldiers piled up and overshot their goal `x=±30` to `±39.6`, the rear ranks shoving the arrived front ranks past the single goal disc. 750 capsules of radius 0.4 cannot fit an `ArrivalRadius=6` (≈113 m²) disc.
+
+This is a goal-distribution design gap, exactly matching the diagnosis in the FAIL section — not a collider/solver-tolerance issue.
+
+**Fix applied (smallest change, no avoidance code / flow fields):**
+`CrowdSpawnSystem.SpawnArmy` now stamps each soldier's `Goal` as the configured army goal **translated by that soldier's offset from its spawn center**:
+`Goal = goal + (spawnPos - center)`. The army therefore marches as a translated block from its spawn rect to a same-sized, non-overlapping destination rect — a physically satisfiable target — instead of every soldier converging on one point. EditMode test `StampsGoalsPerArmy` (`Assets/Tests/EditMode/CrowdSpawnSystemTests.cs`) was updated to assert `(Goal - configuredGoal) == (spawnPos - spawnCenter)` per soldier.
+
+**Validation re-run: BLOCKED (environment).** After the code edit, the Unity Editor wedged: editing scripts while play mode was still active queued a domain reload that never completed (`EditorApplication.isCompiling` stuck `true` for >15 min; the periodic editor async-log timer stopped firing — main thread hung). Every `Unity_RunCommand` is gated behind `isCompiling`, so the Editor could neither be stopped nor re-entered through MCP, and the post-fix overlap (≥0.75 target at 60s/120s), EditMode suite, and clean frame-time measurement **could not be captured this session**. The code fix and test update are committed and correct by inspection; they require an Editor restart to validate live. Recommended next session: restart the Editor (clears the wedge), run the `Demo\.Tests\.Crowd.*` EditMode filter (expect 14 passing), then re-measure overlap and frame time in a freshly-focused play session.
