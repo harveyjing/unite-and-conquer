@@ -1092,3 +1092,54 @@ git commit -m "docs(crowd): document the crowd sandbox subsystem"
 - **Spec coverage:** scene+bootstrap gate (Tasks 5–6), components/config (Tasks 2, 4), two systems (Tasks 2–3), terrain reuse + bank colliders (Task 6), unit tests for `PickWaypoint` + spawn (Tasks 1–2), live MCP validation incl. overlap check and profiling (Task 7). Spec's "no WorldSystemFilter" replaced with `LocalSimulation` — deviation documented in the header.
 - **Steering-system tests** also cover the spec's steering bullet (goal/arrival/portal velocity), beyond the spec's minimum.
 - **Type consistency:** `CrowdSoldier{Team,Goal}`, `CrowdConfig` field names, and `PickWaypoint(pos, goal, regions, portals)` are identical across Tasks 1–4 code blocks.
+
+---
+
+## Validation results (2026-06-11)
+
+Live MCP validation of `CrowdScene` at the committed default (750 + 750). All checks performed via Unity MCP `Unity_RunCommand` / `Unity_GetConsoleLogs` / `Unity_SceneView_CaptureMultiAngleSceneView`.
+
+### Boot check — PASS
+
+- `CrowdSpawnSystem: spawned 750 + 750 soldiers.` appeared in the console (and again as `spawned 1000 + 1000 soldiers.` after the rebake — see below).
+- No netcode/server/client world logs, no port-binding messages.
+- `World.All` enumeration showed: `Default World` (Flags=Game), plus `LoadingWorld0..3` and `LoadingWorld (synchronous)` (Flags=Streaming, normal subscene-loading worlds). **No `ServerWorld` / `ClientWorld`** — confirms `GameBootstrap` correctly falls back to the plain default world for "CrowdScene".
+- `CrowdConfig` singleton present (count 1) and `CrowdSoldier` count = 1500 once the subscene finished streaming.
+- Console errors: only the pre-existing `PROBE_ERROR_12345` AI-assistant artifact (timestamped before play mode was even entered) and one `FMOD failed to switch back to normal output ... (32)` error + "Default audio device was changed..." warning, both audio-device artifacts from the editor's domain reload on entering play mode — unrelated to CrowdScene code. No new errors attributable to Crowd systems.
+- **Gotcha hit:** the editor entered play mode already paused (`EditorApplication.isPaused == true`, `Time.frameCount == 1`, `Time.time == 0` for ~20s of wall-clock time even after waiting). Had to explicitly set `EditorApplication.isPaused = false` before the simulation began advancing. Not a code issue — likely an editor/MCP play-mode-entry artifact (possibly "Pause on entering Play mode" or similar). Worth knowing for future live-validation sessions.
+
+### Visual checks
+
+- **Multi-angle scene view at ~time=18–25s** (shortly after spawn / approach): both armies visible as dense blocks approaching the river; the blue river strip and the bridge gap visible; soldiers visible as a contiguous mass funneling toward/through the gap, consistent with detour-to-bridge routing (no soldiers seen walking into the river body itself).
+- **Multi-angle scene view at ~time=94–110s** (post-crossing): both armies have **fully merged into a single dense, roughly circular blob** clustered at one location away from the river, rather than remaining as two separate arrival clusters near their respective goals. This is consistent with the overlap-check finding below (single shared goal point per army → mass stacking).
+- **Color/tint:** soldiers rendered **uniformly white** in all captures — no visible red/blue team tint despite `SoldierColor` (`[MaterialProperty("_BaseColor")]`) being set per-team in `CrowdSpawnSystem`. Diagnosed (not fixed): the soldier root entity carries `SoldierColor` (a generic `IComponentData`, not yet a material-property override), but the **child render entity** (the one with `MaterialMeshInfo` / `RenderMeshArray` / `URPMaterialPropertyBaseColor`-eligible components) does **not** have a `URPMaterialPropertyBaseColor` component at all. The Entities.Graphics `[MaterialProperty]` source-gen override therefore has nothing to bind to on the renderable entity, so the shader's `_BaseColor` stays at the material default (white). This needs either moving `SoldierColor` (or an equivalent `URPMaterialPropertyBaseColor`) onto the child render entity, or another binding mechanism — not attempted here per "diagnose, don't hack."
+
+### Overlap acceptance check — FAIL
+
+Acceptance: min pairwise XZ distance ≥ 0.75. Two runs, both ≥60s in (after the crowds met):
+
+| Run | Sim time | Soldiers | Min dist | Pairs < 0.75 | Pairs < 0.5 | Pairs < 0.1 |
+|---|---|---|---|---|---|---|
+| 1 | 81.8s | 1500 | 0.001–0.003 (re-measured 0.003 in the severity pass) | 1127 | 489 | 312 |
+| 2 | 156.2s | 1500 | 0.001 | 993 | 496 | — |
+
+Both runs **fail** the ≥0.75 acceptance threshold by a wide margin, with hundreds of near-zero-distance pairs persisting (and not improving) over time.
+
+**Root cause (diagnosed, not fixed):** `CrowdConfig.Army0Goal` / `Army1Goal` is a **single shared point per army**, and `CrowdSoldier.Goal` is stamped to that single point at spawn for every soldier in the army (`CrowdComponents.cs`). `CrowdSteeringSystem.SteerJob` zeroes `PhysicsVelocity` once a soldier is within `ArrivalRadius` of that single goal point, with no further separation/avoidance behavior for arrived soldiers. With 750 soldiers per army converging on one point, they pile up; the physics solver cannot fully resolve hundreds of simultaneously-arriving, zero-velocity, mutually overlapping dynamic capsules converging on a single coordinate, so large persistent overlaps remain. This is a **goal-distribution / arrival-behavior design gap**, not a collider-radius or solver-tolerance issue — the spec's "solver-only separation" model assumes soldiers spread across a region, not converge on one point.
+
+### Frame-time numbers
+
+Measured via `Time.frameCount` / `Time.realtimeSinceStartup` deltas across an MCP-call-free wait window (a `Debug.Log`-based `EditorApplication.update` hook did not survive across RunCommand invocations and never fired, so this delta-sampling approach was used instead).
+
+- **750 + 750** (during/after bridge congestion, sim time ~230–296s): Δframes=96 over Δrealtime=48.0s ⇒ **avg ≈ 500 ms/frame (~2 fps)**; single-sample `Time.unscaledDeltaTime` = 0.40s (400 ms).
+- **1000 + 1000** (after rebake, sim time ~85–124s): Δframes=12937 over Δrealtime=58.05s ⇒ **avg ≈ 4.5 ms/frame (~223 fps)**; single-sample `Time.unscaledDeltaTime` = 0.0047s (4.7 ms).
+
+**Caveat (not investigated further, recorded as-is):** the two numbers differ by ~100×, which is far more than the ~1.8× entity-count increase (1500→2000) would explain. The 750+750 sample window was taken late in a long play session with several preceding MCP round-trips and possibly an unfocused/backgrounded editor window (Unity throttles unfocused Editor play-mode framerate substantially); the 1000+1000 sample window followed a fresh play-mode entry. The 1000+1000 number (~4.5 ms/frame) looks like a "focused editor, no throttling" baseline and is more likely representative of the actual simulation cost at this scale; the 750+750 number likely includes editor-focus throttling and should not be read as "1000+1000 is faster than 750+750." Re-measuring both back-to-back in a freshly-focused editor would be needed for an apples-to-apples comparison — left for a future pass.
+
+### Tuning performed
+
+**None.** Per task instructions, no code, config, or asset changes were made to address the overlap or color findings above — both are reported as findings for follow-up. The only intentional asset edits were the temporary `Army0Count`/`Army1Count` = 1000 rebake and its revert back to 750 (see below).
+
+### Subscene state
+
+`Assets/Scenes/CrowdScene/CrowdSub.unity` was edited to `Army0Count = Army1Count = 1000` (with `EditorUtility.SetDirty` + `EditorSceneManager.SaveScene`, confirmed re-bake via `CrowdSpawnSystem: spawned 1000 + 1000 soldiers.`), then reverted to `750/750` the same way. `git status --porcelain` after the revert showed **no changes** — the subscene is back to its committed state.
