@@ -27,6 +27,17 @@ namespace Demo.Tests
                 if (s.Team == 0) team0++; else team1++;
             Assert.AreEqual(5, team0);
             Assert.AreEqual(3, team1);
+
+            // Army 1 shares SpawnHalfExtents but has its own center.
+            var xformQuery = Manager.CreateEntityQuery(typeof(CrowdSoldier), typeof(Unity.Transforms.LocalTransform));
+            using var ents = xformQuery.ToEntityArray(Unity.Collections.Allocator.Temp);
+            foreach (var e in ents)
+            {
+                if (Manager.GetComponentData<CrowdSoldier>(e).Team != 1) continue;
+                var p = Manager.GetComponentData<Unity.Transforms.LocalTransform>(e).Position;
+                Assert.LessOrEqual(math.abs(p.x - 30f), 12f + 1e-3f);
+                Assert.LessOrEqual(math.abs(p.z - 0f), 30f + 1e-3f);
+            }
         }
 
         [Test]

@@ -36,6 +36,9 @@ namespace Demo
             state.Enabled = false;
         }
 
+        // `config` supplies only the army-shared fields (SoldierPrefab,
+        // SpawnHalfExtents, SpawnSpacing); per-army values are passed
+        // explicitly so this method never has to pick Army0 vs Army1 fields.
         static void SpawnArmy(EntityManager em, in CrowdConfig config,
             int team, int count, float3 center, float3 goal, float4 color)
         {
@@ -44,6 +47,8 @@ namespace Demo
 
             float2 half    = config.SpawnHalfExtents;
             float  spacing = config.SpawnSpacing;
+            // Counts beyond the rect's grid capacity overflow past +z (no
+            // guard) — size SpawnHalfExtents accordingly. Sandbox-acceptable.
             int cols = math.max(1, (int)math.floor(half.x * 2f / spacing));
 
             using var entities = em.Instantiate(config.SoldierPrefab, count, Allocator.Temp);
@@ -57,7 +62,7 @@ namespace Demo
                     center.z - half.y + (row + 0.5f) * spacing);
                 em.SetComponentData(entities[i], LocalTransform.FromPosition(pos));
                 em.SetComponentData(entities[i], new CrowdSoldier { Team = team, Goal = goal });
-                em.SetComponentData(entities[i], new SoldierColor { Value = color });
+                em.SetComponentData(entities[i], new SoldierColor { Value = color }); // reuses Battle's generic tint component
             }
         }
     }
