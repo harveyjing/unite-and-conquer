@@ -69,6 +69,20 @@ namespace Demo
                 em.SetComponentData(entities[i], LocalTransform.FromPosition(pos));
                 em.SetComponentData(entities[i], new CrowdSoldier { Team = team, Goal = soldierGoal });
                 em.SetComponentData(entities[i], new SoldierColor { Value = color }); // reuses Battle's generic tint component
+
+                // The root's SoldierColor is inert (no MaterialMeshInfo there);
+                // push the tint to every linked entity that can bind it — the
+                // prefab's Visual child carries the actual renderer.
+                if (em.HasBuffer<LinkedEntityGroup>(entities[i]))
+                {
+                    var linked = em.GetBuffer<LinkedEntityGroup>(entities[i]);
+                    for (int l = 0; l < linked.Length; l++)
+                    {
+                        var le = linked[l].Value;
+                        if (le != entities[i] && em.HasComponent<SoldierColor>(le))
+                            em.SetComponentData(le, new SoldierColor { Value = color });
+                    }
+                }
             }
         }
     }

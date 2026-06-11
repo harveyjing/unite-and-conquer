@@ -54,6 +54,18 @@ namespace Demo.Tests
                 typeof(LocalTransform), typeof(PhysicsVelocity),
                 typeof(Prefab));
             Manager.SetComponentData(e, LocalTransform.Identity);
+
+            // Models the prefab's Visual child: carries its own SoldierColor
+            // (the one Entities.Graphics actually binds to _BaseColor).
+            var child = Manager.CreateEntity(
+                typeof(SoldierColor), typeof(LocalTransform), typeof(Prefab));
+            Manager.SetComponentData(child, LocalTransform.Identity);
+
+            // LinkedEntityGroup element 0 must be the root (Unity convention).
+            var leg = Manager.AddBuffer<LinkedEntityGroup>(e);
+            leg.Add(new LinkedEntityGroup { Value = e });
+            leg.Add(new LinkedEntityGroup { Value = child });
+
             return e;
         }
 

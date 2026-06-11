@@ -98,5 +98,25 @@ namespace Demo.Tests
                         $"soldiers {i} and {j} spawned overlapping");
             }
         }
+
+        [Test]
+        public void TintsLinkedVisualChild()
+        {
+            var prefab = CreateCrowdSoldierPrefabStub();
+            CreateCrowdConfig(prefab, army0Count: 1, army1Count: 0,
+                army0SpawnCenter: new float3(-30f, 0f, 0f),
+                army0Goal: new float3(30f, 0f, 0f));
+
+            CreateAndUpdateSystem<CrowdSpawnSystem>();
+
+            var query = Manager.CreateEntityQuery(typeof(CrowdSoldier));
+            using var soldiers = query.ToEntityArray(Unity.Collections.Allocator.Temp);
+            Assert.AreEqual(1, soldiers.Length);
+            var linked = Manager.GetBuffer<LinkedEntityGroup>(soldiers[0]);
+            Assert.AreEqual(2, linked.Length, "instantiated soldier should keep its linked child");
+            var childColor = Manager.GetComponentData<SoldierColor>(linked[1].Value);
+            Assert.AreEqual(1f, childColor.Value.x, 1e-4f); // Army0Color red channel
+            Assert.AreEqual(0f, childColor.Value.y, 1e-4f);
+        }
     }
 }
