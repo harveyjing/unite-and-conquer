@@ -24,7 +24,7 @@ namespace Demo
         [Tooltip("Grid pitch at spawn; keep above the capsule diameter.")]
         public float SpawnSpacing  = 1.2f;
         public float MoveSpeed     = 2.5f;
-        [Tooltip("Soldiers stop within this distance of their goal. Generous: hundreds share one goal point.")]
+        [Tooltip("Soldiers stop within this distance of their goal (each soldier gets its own goal: army goal + spawn-grid offset).")]
         public float ArrivalRadius = 6f;
 
         [Header("Team colors (RGBA, linear)")]
