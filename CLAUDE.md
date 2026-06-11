@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **SampleScene** — original Netcode demo: `ClientServerBootstrap` (`GameBootstrap`) + `GoInGame` RPC handshake, predicted player ghost (WASD), `DemoHudController` UI Toolkit HUD with ECS↔UI data binding.
 - **BattleScene** — squad-based melee battle. Soldiers are organized into **Squad** entities (rectangular `Rows × Cols` formations); squads target the nearest enemy squad, advance/rotate as a unit, and soldiers follow assigned slots. Squads **navigate around impassable terrain** (river+bridge, valley pass) via authored `TerrainRegion` + `CrossingPortal` data — routing to the crossing, re-shaping into a narrow block to pass through, then re-expanding (see *Terrain navigation* in `Assets/Scripts/Demo/Battle/CLAUDE.md`). As soldiers die the formation **compacts** (shrinks rows, reassigns slots). Each soldier shows a client-side health bar. `BattleHudController` counts ghost soldiers per team client-side and shows a winner banner. `BattleCameraMono` provides scroll-wheel zoom and middle-mouse pan. Each of the two armies can be **claimed by a connected user** via a login HUD; the claiming client sees a ground "ownership ring" under its own soldiers (see *Authentication & army ownership* in `Assets/Scripts/Demo/Battle/CLAUDE.md`).
+- **CrowdScene** — netcode-free crowd sandbox: fully individual soldiers (no squads), proving large-population movement without formation logic. Unity Physics dynamic capsules provide all soldier-soldier separation; stateless per-soldier waypoint steering routes around the same `TerrainRegion`/`CrossingPortal` data used by Battle's terrain navigation. The bootstrap gives this scene a plain local world (no netcode). Details in `Assets/Scripts/Demo/Crowd/CLAUDE.md`.
 
 ## Unity project
 
@@ -53,9 +54,10 @@ All code lives under `Assets/Scripts/Demo/` (`Demo` namespace):
 - **`UI/`** — `DemoHudViewModel`, `DemoHudController`, `RespawnRequest`, `SpawnObstacleRequest`
 - **`CameraFollowMono.cs`** / **`BattleCameraMono.cs`** — MonoBehaviour cameras; `CameraFollowMono` bridges ECS→camera (SampleScene); `BattleCameraMono` provides scroll-zoom + middle-mouse pan (BattleScene)
 - **`Battle/`** — squad-based BattleScene subsystem (`Authoring/`, `Auth.cs`, `SquadGeometry.cs`, `System/`, `UI/`). Internals — squad pipeline, authentication & army ownership — documented in **`Assets/Scripts/Demo/Battle/CLAUDE.md`** (auto-loaded when working in that subtree).
+- **`Crowd/`** — netcode-free CrowdScene sandbox (individual-soldier steering, no squads). Internals documented in **`Assets/Scripts/Demo/Crowd/CLAUDE.md`** (auto-loaded when working in that subtree).
 - **`Assets/Tests/EditMode/`** — EditMode unit tests for the squad systems and `SquadGeometry`
 
-Scenes: `Assets/Scenes/SampleScene.unity` + subscene `EcsDemoSub.unity`; `Assets/Scenes/BattleScene.unity` + subscene `BattleSub.unity`.
+Scenes: `Assets/Scenes/SampleScene.unity` + subscene `EcsDemoSub.unity`; `Assets/Scenes/BattleScene.unity` + subscene `BattleSub.unity`; `Assets/Scenes/CrowdScene.unity` + subscene `CrowdSub.unity`.
 
 UI assets: `Assets/UI/DemoHud.{uxml,uss}`, `Assets/UI/BattleHud.{uxml,uss}`.
 

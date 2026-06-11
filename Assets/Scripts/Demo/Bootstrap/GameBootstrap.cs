@@ -21,6 +21,15 @@ namespace Demo
     {
         public override bool Initialize(string defaultWorldName)
         {
+            // CrowdScene is a netcode-free sandbox: opt out entirely so
+            // Entities creates the plain default world (single world, no
+            // client/server split, no port binding). Safe here because
+            // default-world init runs AfterSceneLoad, so the active scene is
+            // already known. Crowd systems are LocalSimulation-filtered, so
+            // they exist only in that world.
+            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "CrowdScene")
+                return false;
+
             AutoConnectPort = 7979;
 
 #if UNITY_EDITOR
