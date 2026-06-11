@@ -10,7 +10,7 @@ namespace Demo
     [BurstCompile]
     [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
-    [UpdateAfter(typeof(SquadTargetingSystem))]
+    [UpdateAfter(typeof(SquadNavigationSystem))]
     public partial struct SquadMovementSystem : ISystem
     {
         public void OnCreate(ref SystemState state)
@@ -24,7 +24,6 @@ namespace Demo
             var config = SystemAPI.GetSingleton<BattleConfig>();
             float dt = SystemAPI.Time.DeltaTime;
             var squadLookup = SystemAPI.GetComponentLookup<Squad>(true);
-            var xformLookup = SystemAPI.GetComponentLookup<LocalTransform>(true);
 
             new SquadStepJob
             {
@@ -34,7 +33,6 @@ namespace Demo
                 ContactMargin = config.ContactMargin,
                 Dt            = dt,
                 SquadLookup   = squadLookup,
-                XformLookup   = xformLookup,
             }.ScheduleParallel();
         }
     }
@@ -48,36 +46,38 @@ namespace Demo
         public float ContactMargin;
         public float Dt;
 
-        [Unity.Collections.ReadOnly] public ComponentLookup<Squad> SquadLookup;
         [Unity.Collections.ReadOnly, NativeDisableContainerSafetyRestriction]
-        public ComponentLookup<LocalTransform> XformLookup;
+        public ComponentLookup<Squad> SquadLookup;
 
-        public void Execute(in Squad self, in SquadTarget target, ref LocalTransform xform)
+        public void Execute(in Squad self, in SquadMoveGoal goal,
+                            in SquadTarget target, ref LocalTransform xform)
         {
-            if (target.Value == Entity.Null) return;
-            if (!XformLookup.HasComponent(target.Value)) return;
-            if (!SquadLookup.HasComponent(target.Value)) return;
-
-            float3 targetPos = XformLookup[target.Value].Position;
-            float3 toTarget  = targetPos - xform.Position;
-            toTarget.y = 0f;
-            float dist = math.length(toTarget);
+            float3 toGoal = goal.Position - xform.Position;
+            toGoal.y = 0f;
+            float dist = math.length(toGoal);
             if (dist < 1e-4f) return;
 
-            float3 desiredFwd = toTarget / dist;
+            float3 desiredFwd = toGoal / dist;
             quaternion desiredRot = quaternion.LookRotationSafe(desiredFwd, math.up());
             float slerpT = math.saturate(RotationSpeed * Dt);
             xform.Rotation = math.slerp(xform.Rotation, desiredRot, slerpT);
 
-            int targetRows = SquadLookup[target.Value].Rows;
-            float engageDist = SquadGeometry.EngagementDistance(
-                self.Rows, targetRows, self.Spacing, AttackRange, ContactMargin);
+            // Engagement stop applies only when chasing an enemy (Engage == 1).
+            float stopDist = 0f;
+            if (goal.Engage != 0
+                && target.Value != Entity.Null
+                && SquadLookup.HasComponent(target.Value))
+            {
+                int targetRows = SquadLookup[target.Value].Rows;
+                stopDist = SquadGeometry.EngagementDistance(
+                    self.Rows, targetRows, self.Spacing, AttackRange, ContactMargin);
+            }
 
-            if (dist <= engageDist) return;
+            if (dist <= stopDist) return;
 
             float3 fwd = math.mul(xform.Rotation, new float3(0, 0, 1));
             float step = AdvanceSpeed * Dt;
-            float maxStep = dist - engageDist;
+            float maxStep = dist - stopDist;
             step = math.min(step, maxStep);
             xform.Position += fwd * step;
         }

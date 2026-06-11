@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.Mathematics;
 
 namespace Demo
 {
@@ -32,5 +33,24 @@ namespace Demo
     {
         public Entity Squad;
         public int    SlotIndex;
+    }
+
+    // Server-only. The squad's terrain-navigation state machine.
+    public enum NavState : byte { Pursue = 0, ApproachPortal = 1, Crossing = 2 }
+
+    public struct SquadNav : IComponentData
+    {
+        public NavState State;
+        public float3   Entrance;     // cached portal endpoint on our side
+        public float3   Exit;         // cached portal endpoint on the far side
+        public float    PortalWidth;  // cached, drives the narrow Cols
+        public int      BaseCols;     // full-width Cols to restore after crossing
+    }
+
+    // Server-only. Written by SquadNavigationSystem, read by SquadMovementSystem.
+    public struct SquadMoveGoal : IComponentData
+    {
+        public float3 Position;   // where the squad anchor should head this tick
+        public byte   Engage;     // 1 = stop at EngagementDistance; 0 = walk fully there
     }
 }

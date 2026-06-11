@@ -41,5 +41,71 @@ namespace Demo
             if (cols <= 0) return 0;
             return (aliveCount + cols - 1) / cols;
         }
+
+        // Widest column count whose soldiers (one `spacing` apart) fit within a
+        // corridor of `width`. Conservative floor leaves roughly a half-spacing
+        // margin on each side, keeping the narrow block clear of the water/cliff
+        // edges when a squad crosses a portal. Always >= 1.
+        public static int NarrowColsForWidth(float width, float spacing)
+        {
+            if (spacing <= 0f) return 1;
+            int cols = (int)math.floor(width / spacing);
+            return math.max(1, cols);
+        }
+
+        // True if the XZ segment p0->p1 intersects the oriented box (center,
+        // halfExtents, yaw radians about Y). Y is ignored — terrain regions are
+        // vertical prisms. Transforms the segment into the box's local frame and
+        // runs a 2D slab test. Used by SquadNavigationSystem to decide whether a
+        // squad's straight path to its target is blocked.
+        public static bool SegmentIntersectsBox(
+            float3 p0, float3 p1, float3 center, float2 halfExtents, float yaw)
+        {
+            // Undo yaw: rotate world deltas by -yaw about Y into the box-local frame
+            // where the box is axis-aligned.
+            float c = math.cos(-yaw);
+            float s = math.sin(-yaw);
+            float2 a = WorldToLocalXZ(p0, center, c, s);
+            float2 b = WorldToLocalXZ(p1, center, c, s);
+            float2 d = b - a;
+
+            float tmin = 0f;
+            float tmax = 1f;
+
+            for (int axis = 0; axis < 2; axis++)
+            {
+                float origin = axis == 0 ? a.x : a.y;
+                float dir    = axis == 0 ? d.x : d.y;
+                float half   = axis == 0 ? halfExtents.x : halfExtents.y;
+
+                // 1e-8 is far below any real world-space direction component, so this only catches truly axis-parallel segments.
+                if (math.abs(dir) < 1e-8f)
+                {
+                    // Segment parallel to this slab: reject if it lies outside.
+                    if (origin < -half || origin > half) return false;
+                }
+                else
+                {
+                    float inv = 1f / dir;
+                    float t1 = (-half - origin) * inv;
+                    float t2 = ( half - origin) * inv;
+                    if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
+                    tmin = math.max(tmin, t1);
+                    tmax = math.min(tmax, t2);
+                    if (tmin > tmax) return false;
+                }
+            }
+            return true;
+        }
+
+        // Rotate a world point's XZ offset from `center` by an already-computed
+        // (cos,sin) into the box-local frame. Returns (localX, localZ) as a float2.
+        static float2 WorldToLocalXZ(float3 p, float3 center, float cosA, float sinA)
+        {
+            float dx = p.x - center.x;
+            float dz = p.z - center.z;
+            return new float2(dx * cosA - dz * sinA,  // .x = localX
+                              dx * sinA + dz * cosA); // .y = localZ
+        }
     }
 }

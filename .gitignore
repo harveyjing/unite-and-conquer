@@ -122,3 +122,6 @@ Thumbs.db
 # Local HealthBar validation captures
 /[Aa]ssets/[Cc]aptures/
 /[Aa]ssets/[Cc]aptures.meta
+
+# Superpowers brainstorming visual-companion mockups
+.superpowers/

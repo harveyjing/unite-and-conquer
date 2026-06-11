@@ -42,5 +42,24 @@ namespace Demo.Tests
             ref var stateRef = ref World.Unmanaged.ResolveSystemStateRef(handle);
             Assert.IsFalse(stateRef.Enabled, "BattleSpawnSystem disables itself after spawning");
         }
+
+        [Test]
+        public void Spawn_SquadsHaveNavComponents_Pursue()
+        {
+            var config = CreateBattleConfig(squadsPerTeam: 1, rows: 2, cols: 2);
+            var stub = CreateSoldierPrefabStub();
+            var bc = Manager.GetComponentData<BattleConfig>(config);
+            bc.SoldierPrefab = stub;
+            Manager.SetComponentData(config, bc);
+
+            CreateAndUpdateSystem<BattleSpawnSystem>();
+
+            var squadQuery = Manager.CreateEntityQuery(typeof(Squad), typeof(SquadNav), typeof(SquadMoveGoal));
+            Assert.AreEqual(2, squadQuery.CalculateEntityCount(), "one red + one blue squad");
+
+            using var squads = squadQuery.ToEntityArray(Allocator.Temp);
+            foreach (var s in squads)
+                Assert.AreEqual(NavState.Pursue, Manager.GetComponentData<SquadNav>(s).State);
+        }
     }
 }

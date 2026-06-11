@@ -85,12 +85,12 @@ namespace Demo
         public Color BlueColor = new Color(0.1f, 0.4f, 1f, 1f);
 
         [Header("Health bar")]
-        [Tooltip("HealthBar prefab — see Assets/Prefabs/HealthBar.prefab (created in Task 8).")]
+        [Tooltip("HealthBar prefab — see Assets/Prefabs/BattleScene/HealthBar.prefab.")]
         public GameObject HealthBarPrefab;
         public float      HealthBarHeightOffset = 1.2f;
 
         [Header("Ownership ring")]
-        [Tooltip("OwnershipRing prefab — flat ring/disc mesh, see Assets/Prefabs/OwnershipRing.prefab (wired in a later Editor step).")]
+        [Tooltip("OwnershipRing prefab — flat ring/disc mesh, see Assets/Prefabs/BattleScene/OwnershipRing.prefab.")]
         public GameObject OwnershipRingPrefab;
         public float      RingHeightOffset = 0.05f;
 
