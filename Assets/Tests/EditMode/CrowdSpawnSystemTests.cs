@@ -53,13 +53,23 @@ namespace Demo.Tests
 
             CreateAndUpdateSystem<CrowdSpawnSystem>();
 
-            var query = Manager.CreateEntityQuery(typeof(CrowdSoldier));
-            using var soldiers = query.ToComponentDataArray<CrowdSoldier>(Unity.Collections.Allocator.Temp);
-            foreach (var s in soldiers)
+            // Goals preserve the spawn footprint: each soldier's goal is the
+            // configured army goal translated by that soldier's offset from its
+            // spawn center, so (Goal - configuredGoal) == (spawnPos - spawnCenter).
+            var center0 = new float3(-30f, 0f, 0f);
+            var center1 = new float3( 30f, 0f, 0f);
+            var query = Manager.CreateEntityQuery(typeof(CrowdSoldier), typeof(LocalTransform));
+            using var ents = query.ToEntityArray(Unity.Collections.Allocator.Temp);
+            foreach (var e in ents)
             {
-                var expected = s.Team == 0 ? goal0 : goal1;
-                Assert.AreEqual(expected.x, s.Goal.x, 1e-4f);
-                Assert.AreEqual(expected.z, s.Goal.z, 1e-4f);
+                var s   = Manager.GetComponentData<CrowdSoldier>(e);
+                var pos = Manager.GetComponentData<LocalTransform>(e).Position;
+                var configuredGoal = s.Team == 0 ? goal0 : goal1;
+                var center         = s.Team == 0 ? center0 : center1;
+                var goalOffset  = s.Goal - configuredGoal;
+                var spawnOffset = pos - center;
+                Assert.AreEqual(spawnOffset.x, goalOffset.x, 1e-4f, "goal x offset must match spawn offset");
+                Assert.AreEqual(spawnOffset.z, goalOffset.z, 1e-4f, "goal z offset must match spawn offset");
             }
         }
 

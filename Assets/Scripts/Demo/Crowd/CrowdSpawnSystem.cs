@@ -60,8 +60,14 @@ namespace Demo
                     center.x - half.x + (col + 0.5f) * spacing,
                     0f,
                     center.z - half.y + (row + 0.5f) * spacing);
+                // Per-soldier goal preserves the spawn grid's footprint: the army
+                // marches as a translated block to a same-sized destination rect
+                // instead of every soldier converging on one point (which packs
+                // hundreds of capsules into an unsatisfiable disc and makes the
+                // physics solver fight an unwinnable crush every tick).
+                var soldierGoal = goal + new float3(pos.x - center.x, 0f, pos.z - center.z);
                 em.SetComponentData(entities[i], LocalTransform.FromPosition(pos));
-                em.SetComponentData(entities[i], new CrowdSoldier { Team = team, Goal = goal });
+                em.SetComponentData(entities[i], new CrowdSoldier { Team = team, Goal = soldierGoal });
                 em.SetComponentData(entities[i], new SoldierColor { Value = color }); // reuses Battle's generic tint component
             }
         }
