@@ -8,7 +8,8 @@
         "Unity.Mathematics",
         "Unity.Collections",
         "Unity.Transforms",
-        "Unity.NetCode"
+        "Unity.NetCode",
+        "Unity.Physics"
     ],
     "includePlatforms": [
         "Editor"
