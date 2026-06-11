@@ -47,8 +47,8 @@ namespace Demo.Tests
         [Test]
         public void NoRegions_ReturnsGoal()
         {
-            var regions = new NativeArray<TerrainRegion>(0, Allocator.Temp);
-            var portals = Bridge();
+            using var regions = new NativeArray<TerrainRegion>(0, Allocator.Temp);
+            using var portals = Bridge();
             var w = CrowdSteering.PickWaypoint(new float3(-30f, 0f, 5f), RedGoal, regions, portals);
             AssertWaypoint(RedGoal, w);
         }
@@ -57,8 +57,8 @@ namespace Demo.Tests
         public void ClearPath_ReturnsGoal()
         {
             // Both endpoints on the east bank: segment never touches the river box.
-            var regions = River();
-            var portals = Bridge();
+            using var regions = River();
+            using var portals = Bridge();
             var w = CrowdSteering.PickWaypoint(new float3(12f, 0f, 0f), RedGoal, regions, portals);
             AssertWaypoint(RedGoal, w);
         }
@@ -66,8 +66,8 @@ namespace Demo.Tests
         [Test]
         public void BlockedFarFromBridge_ReturnsNearSideEndpoint()
         {
-            var regions = River();
-            var portals = Bridge();
+            using var regions = River();
+            using var portals = Bridge();
             var w = CrowdSteering.PickWaypoint(new float3(-30f, 0f, 5f), RedGoal, regions, portals);
             AssertWaypoint(new float3(-8f, 0f, 0f), w); // entrance on the west side
         }
@@ -75,8 +75,8 @@ namespace Demo.Tests
         [Test]
         public void BlockedFarFromBridge_OppositeArmy_ReturnsItsOwnSideEndpoint()
         {
-            var regions = River();
-            var portals = Bridge();
+            using var regions = River();
+            using var portals = Bridge();
             var w = CrowdSteering.PickWaypoint(new float3(30f, 0f, 5f), BlueGoal, regions, portals);
             AssertWaypoint(new float3(8f, 0f, 0f), w); // endpoints are symmetric
         }
@@ -84,8 +84,8 @@ namespace Demo.Tests
         [Test]
         public void AtNearEndpoint_PushesToFarEndpoint()
         {
-            var regions = River();
-            var portals = Bridge();
+            using var regions = River();
+            using var portals = Bridge();
             var w = CrowdSteering.PickWaypoint(new float3(-8f, 0f, 0f), RedGoal, regions, portals);
             AssertWaypoint(new float3(8f, 0f, 0f), w);
         }
@@ -93,8 +93,8 @@ namespace Demo.Tests
         [Test]
         public void MidBridge_PushesToFarEndpoint()
         {
-            var regions = River();
-            var portals = Bridge();
+            using var regions = River();
+            using var portals = Bridge();
             var w = CrowdSteering.PickWaypoint(new float3(0f, 0f, 0f), RedGoal, regions, portals);
             AssertWaypoint(new float3(8f, 0f, 0f), w);
         }
@@ -105,8 +105,8 @@ namespace Demo.Tests
             // x=-5 is past the entrance (t > 0) but z=12 is outside the
             // corridor width — heading for the exit from here walks into the
             // bank collider, so route back through the entrance point.
-            var regions = River();
-            var portals = Bridge();
+            using var regions = River();
+            using var portals = Bridge();
             var w = CrowdSteering.PickWaypoint(new float3(-5f, 0f, 12f), RedGoal, regions, portals);
             AssertWaypoint(new float3(-8f, 0f, 0f), w);
         }
@@ -114,8 +114,8 @@ namespace Demo.Tests
         [Test]
         public void BlockedButNoPortals_ReturnsGoal()
         {
-            var regions = River();
-            var portals = new NativeArray<CrossingPortal>(0, Allocator.Temp);
+            using var regions = River();
+            using var portals = new NativeArray<CrossingPortal>(0, Allocator.Temp);
             var w = CrowdSteering.PickWaypoint(new float3(-30f, 0f, 5f), RedGoal, regions, portals);
             AssertWaypoint(RedGoal, w); // graceful fallback, no NaN
         }

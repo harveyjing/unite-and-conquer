@@ -21,6 +21,9 @@ namespace Demo
             NativeArray<TerrainRegion> regions,
             NativeArray<CrossingPortal> portals)
         {
+            // No portals: nothing useful to route through, so walk at the goal
+            // even if blocked — the physical terrain colliders are the backstop.
+            // Otherwise go straight when no impassable region blocks the segment.
             if (portals.Length == 0 || !Blocked(pos, goal, regions))
                 return goal;
 
@@ -52,6 +55,9 @@ namespace Demo
             float t        = math.dot(rel, axis) / lenSq;
             float lateral  = math.length(rel - t * axis);
 
+            // Intentionally generous: full Width (not Width/2) as the lateral
+            // margin, so approaching soldiers funnel in early; the bank
+            // colliders, not this check, are what actually keep them dry.
             if (t >= 0f && lateral <= portal.Width)
                 return farEnd;
             return nearEnd;
